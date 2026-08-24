@@ -106,15 +106,8 @@ function shuffle<T>(list: T[]): T[] {
 }
 
 export function buildFaceChallengeSteps(mode: "enroll" | "login"): FaceChallengeStep[] {
-  const center: FaceChallengeStep = { key: "center", pose: "center", need: mode === "enroll" ? 2 : 1 };
-  if (mode === "enroll") {
-    const rest: FaceChallengeStep[] = shuffle([
-      { key: "left", pose: "left", need: 1 },
-      { key: "right", pose: "right", need: 1 },
-      { key: "up", pose: "up", need: 1 },
-    ]);
-    return [center, ...rest];
-  }
+  const center: FaceChallengeStep = { key: "center", pose: "center", need: 2 };
+  if (mode === "login") return [center];
   const turn: FaceChallengeStep = shuffle([
     { key: "left", pose: "left", need: 1 },
     { key: "right", pose: "right", need: 1 },
@@ -185,12 +178,12 @@ export function evaluateLiveness(
   const missing = issued.steps.filter((s) => !completed.has(s.key) && !completed.has(s.pose ?? "")).map((s) => s.key);
   const motion = Number(proof?.motion ?? 0);
   const needBlink = issued.steps.some((s) => s.blink);
-  const minMotion = needBlink && completed.has("blink") ? 0.018 : mode === "enroll" ? 0.03 : 0.022;
+  const minMotion = needBlink && completed.has("blink") ? 0.012 : mode === "enroll" ? 0.018 : 0.012;
   const poseCount = issued.steps.filter((s) => s.pose).length;
   const computed =
-    (mode === "enroll" ? (poseCount >= 3 ? 0.55 : 0) : poseCount >= 2 ? 0.5 : 0.2) +
+    (mode === "enroll" ? (poseCount >= 2 ? 0.55 : 0) : poseCount >= 1 ? 0.55 : 0.2) +
     (needBlink && completed.has("blink") ? 0.12 : 0) +
-    (motion >= 0.05 ? 0.3 : motion >= minMotion ? 0.2 : 0);
+    (motion >= 0.04 ? 0.3 : motion >= minMotion ? 0.2 : 0);
 
   if (missing.length || !Number.isFinite(motion) || motion < minMotion || computed < LIVENESS_THRESHOLD) {
     return {
@@ -236,13 +229,13 @@ export function pickAuthMatch(
   return { ok: true, id: best.id, userId: best.userId, dist: best.dist, cosine: best.cosine };
 }
 
-/** AI solishtirish uchun yaqin nomzodlar (o‘xshash yuzni noto‘g‘ri ochmaslik). */
+/** AI solishtirish uchun yaqin nomzodlar — lokal filtr yumshoq, yakuniy qaror AI fakt. */
 export function listAuthCandidates(
   probes: number[][],
   rows: StoredFace[],
-  limit = 3,
+  limit = 5,
 ): FaceHit[] {
-  const maxDist = FACE_MATCH_MAX + 0.14;
+  const maxDist = Math.max(FACE_MATCH_MAX + 0.22, 0.56);
   return bestPerUser(identityProbes(probes), rows)
     .filter((h) => h.dist <= maxDist)
     .slice(0, limit);

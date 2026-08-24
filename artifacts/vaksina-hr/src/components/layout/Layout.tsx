@@ -1060,7 +1060,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
             <div className={cn('min-w-0', desktopCollapsed && 'md:hidden')}>
               <img
                 src={`${import.meta.env.BASE_URL}logo.png`}
-                alt="Amir Farm"
+                alt="AMIR FARM HR"
                 className="h-10 w-auto max-w-[180px] object-contain object-left"
               />
               <p className="mt-1 text-[11px] font-medium tracking-wide text-sky-200/55">
@@ -1070,7 +1070,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
             {desktopCollapsed ? (
               <img
                 src={`${import.meta.env.BASE_URL}logo.png`}
-                alt="Amir Farm"
+                alt="AMIR FARM HR"
                 className="mx-auto hidden h-9 w-9 rounded-xl object-cover md:block"
               />
             ) : null}
@@ -1242,7 +1242,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
             </button>
             <img
               src={`${import.meta.env.BASE_URL}logo.png`}
-              alt="Amir Farm"
+              alt="AMIR FARM HR"
               className="h-11 w-auto max-w-[min(58vw,240px)] object-contain object-left sm:h-14 sm:max-w-[280px]"
             />
           </div>

@@ -43,7 +43,7 @@ function parseDescriptorList(body: { descriptors?: unknown; descriptor?: unknown
 
 const router: IRouter = Router();
 
-const MAX_SNAPSHOT_CHARS = 180_000; // ~135 KB base64 JPEG
+const MAX_SNAPSHOT_CHARS = 420_000;
 
 async function getUserWithDept(userId: number) {
   const [user] = await db
@@ -218,8 +218,8 @@ router.post("/auth/face/enroll", requireAuth, async (req: AuthRequest, res): Pro
     return;
   }
   const descriptors = parseDescriptorList(req.body ?? {});
-  if (descriptors.length < 3) {
-    res.status(400).json({ error: "Yuz bir necha burchakdan olinishi shart — qayta urinib ko‘ring" });
+  if (descriptors.length < 2) {
+    res.status(400).json({ error: "Yuz aniq olinmadi — kameraga qarab qayta urinib ko‘ring" });
     return;
   }
 

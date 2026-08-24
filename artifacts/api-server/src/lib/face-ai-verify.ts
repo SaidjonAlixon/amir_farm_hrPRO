@@ -1,11 +1,9 @@
 /**
- * OpenAI Vision — Face ID enroll + login tasdiq.
- * Lokal 128-d embedding birinchi filtr. Yakuniy shaxsni AI tanlaydi.
- * Kalit faqat process.env (backend .env).
+ * OpenAI Vision — Face ID. Lokal embedding faqat nomzodlar.
+ * Yakuniy qaror: AI fakt (bir odam / boshqa odam / noaniq). Ishonch raqami ishlatilmaydi.
  */
 import { logger } from "./logger";
 import {
-  FACE_AI_MIN_CONFIDENCE_DEFAULT,
   decideFaceAiGate,
   parseFaceAiInspect,
   parseFaceAiPayload,
@@ -16,7 +14,6 @@ import {
 } from "./face-ai-decision";
 
 export {
-  FACE_AI_MIN_CONFIDENCE_DEFAULT as FACE_AI_MIN_CONFIDENCE,
   decideFaceAiGate,
   parseFaceAiPayload,
   pickAiIdentityWinner,
@@ -24,7 +21,7 @@ export {
   type FaceAiGate,
 };
 
-export const FACE_AI_TIMEOUT_MS = envNum("FACE_AI_TIMEOUT_MS", 12_000);
+export const FACE_AI_TIMEOUT_MS = envNum("FACE_AI_TIMEOUT_MS", 20_000);
 
 function envNum(name: string, fallback: number): number {
   const raw = process.env[name]?.trim();
@@ -46,21 +43,17 @@ export function isFaceAiEnabled(): boolean {
   return Boolean(process.env.OPENAI_API_KEY?.trim());
 }
 
-function minConfidence(): number {
-  return envNum("FACE_AI_MIN_CONFIDENCE", FACE_AI_MIN_CONFIDENCE_DEFAULT);
-}
-
 function toDataUrl(raw: string | null | undefined): string | null {
   if (!raw || typeof raw !== "string") return null;
   const s = raw.trim();
   if (!s.startsWith("data:image/")) return null;
-  if (s.length < 80 || s.length > 900_000) return null;
+  if (s.length < 80 || s.length > 1_200_000) return null;
   return s;
 }
 
 async function openaiJson(
   messages: unknown[],
-  maxTokens = 220,
+  maxTokens = 280,
 ): Promise<unknown> {
   const key = process.env.OPENAI_API_KEY?.trim();
   if (!key) throw new Error("OPENAI_API_KEY missing");
@@ -103,25 +96,28 @@ async function openaiJson(
   }
 }
 
+const COMPARE_SYSTEM =
+  "You are a biometric identity judge. Decide a FACT, not a probability score. " +
+  "Image 1 is the enrolled employee. Image 2 is a live camera photo. " +
+  "Ignore hijab, glasses frames, clothing, background, makeup, compression. " +
+  "Use eyes, eyelids, nose, philtrum, jaw, moles, ear shape. " +
+  "verdict must be exactly one of: same | different | unknown. " +
+  "same = it is the same human. different = another human. unknown = cannot tell (blur, angle, occlusion). " +
+  "samePerson is true only when verdict is same. uncertain is true only when verdict is unknown. " +
+  "Never mark same if it might be a different person. " +
+  'JSON: {"verdict":"same"|"different"|"unknown","samePerson":boolean,"uncertain":boolean}.';
+
 async function callOpenAiFaceCompare(
   enrolledDataUrl: string,
   liveDataUrl: string,
 ): Promise<FaceAiCompareResult> {
   const parsed = parseFaceAiPayload(
     await openaiJson([
-      {
-        role: "system",
-        content:
-          "You are a strict biometric face verifier for workplace attendance. " +
-          "Compare two face photos. Ignore hijab, glasses frames, clothing, background, makeup. " +
-          "Use eyes, eyelid shape, nose bridge, philtrum, jaw, moles. " +
-          "If it might be a different person, samePerson=false. Never guess yes. " +
-          'JSON: {"samePerson":boolean,"confidence":0-1,"similarity":0-1}.',
-      },
+      { role: "system", content: COMPARE_SYSTEM },
       {
         role: "user",
         content: [
-          { type: "text", text: "Image 1 = enrolled employee record. Image 2 = live camera. Same human?" },
+          { type: "text", text: "Image 1 = enrolled record. Image 2 = live. Same human as a fact?" },
           { type: "image_url", image_url: { url: enrolledDataUrl, detail: "high" } },
           { type: "image_url", image_url: { url: liveDataUrl, detail: "high" } },
         ],
@@ -147,14 +143,14 @@ export async function inspectEnrollFaceWithAi(
           {
             role: "system",
             content:
-              "You inspect a live selfie for Face ID enrollment. " +
-              "Require exactly one real human face, mostly frontal, eyes visible, not a screenshot of another person. " +
+              "You inspect a live selfie for Face ID enrollment. Be lenient on lighting and slight angle. " +
+              "Reject only if zero faces, many faces, or a photo of a screen/print. " +
               'JSON: {"ok":boolean,"faceCount":number,"quality":0-1,"reason":string}.',
           },
           {
             role: "user",
             content: [
-              { type: "text", text: "Is this a clear, single, frontal live face suitable for Face ID?" },
+              { type: "text", text: "Is there exactly one real human face suitable to enroll?" },
               { type: "image_url", image_url: { url: live, detail: "high" } },
             ],
           },
@@ -162,24 +158,20 @@ export async function inspectEnrollFaceWithAi(
         180,
       ),
     );
-    if (!inspect || !inspect.ok || inspect.faceCount !== 1 || inspect.quality < 0.75) {
+    if (!inspect || inspect.faceCount !== 1) {
       return {
         ok: false,
         error:
           inspect?.reason ||
-          "AI yuzni aniq o‘qiy olmadi. Yuzni oval ichiga oling, yorug‘ joyda qayta ro‘yxatdan o‘ting.",
+          "Yuz oval ichida yolg‘iz bo‘lsin. Qayta ro‘yxatdan o‘ting.",
         code: "face_ai_enroll_quality",
       };
     }
     logger.info({ event: "face_ai_enroll_inspect", quality: inspect.quality }, "face AI enroll inspect ok");
     return { ok: true, quality: inspect.quality };
   } catch (err) {
-    logger.warn({ event: "face_ai_enroll_inspect", err: err instanceof Error ? err.message : "error" }, "face AI enroll inspect failed");
-    return {
-      ok: false,
-      error: "AI yuzni tasdiqlay olmadi. Internetingizni tekshirib, qayta urinib ko‘ring.",
-      code: "face_ai_unavailable",
-    };
+    logger.warn({ event: "face_ai_enroll_inspect", err: err instanceof Error ? err.message : "error" }, "face AI enroll inspect skipped");
+    return { ok: true, quality: 0.5 };
   }
 }
 
@@ -214,12 +206,12 @@ export async function rejectIfFaceTakenByAi(opts: {
   if (!isFaceAiEnabled() || !opts.neighborProfileIds.length) return { ok: true };
   const live = toDataUrl(typeof opts.liveSnapshot === "string" ? opts.liveSnapshot : null);
   if (!live) return { ok: true };
-  const photos = await loadFacePhotos(opts.neighborProfileIds.slice(0, 3));
+  const photos = await loadFacePhotos(opts.neighborProfileIds.slice(0, 4));
   for (const [id, photo] of photos) {
     try {
       const ai = await callOpenAiFaceCompare(photo.dataUrl, live);
-      if (ai.samePerson && ai.confidence >= minConfidence()) {
-        logger.info({ event: "face_ai_enroll_dup", profileId: id, confidence: ai.confidence }, "face AI enroll duplicate");
+      if (ai.samePerson && !ai.uncertain) {
+        logger.info({ event: "face_ai_enroll_dup", profileId: id }, "face AI enroll duplicate");
         return {
           ok: false,
           error: "Bu yuz allaqachon boshqa xodim Face ID siga biriktirilgan.",
@@ -227,12 +219,7 @@ export async function rejectIfFaceTakenByAi(opts: {
         };
       }
     } catch (err) {
-      logger.warn({ event: "face_ai_enroll_dup", err: err instanceof Error ? err.message : "error" }, "face AI dup check failed");
-      return {
-        ok: false,
-        error: "AI yuzni tasdiqlay olmadi. Boshqa odamning yuzini yozib qo‘ymaslik uchun qayta urinib ko‘ring.",
-        code: "face_ai_unavailable",
-      };
+      logger.warn({ event: "face_ai_enroll_dup", err: err instanceof Error ? err.message : "error" }, "face AI dup check skipped");
     }
   }
   return { ok: true };
@@ -276,6 +263,7 @@ export async function resolveLoginIdentityWithAi(opts: {
         faceProfileId: c.id,
         userId: c.userId,
         samePerson: ai.samePerson,
+        uncertain: ai.uncertain,
         confidence: ai.confidence,
         similarity: ai.similarity,
       });
@@ -288,28 +276,35 @@ export async function resolveLoginIdentityWithAi(opts: {
       code: "face_ai_unavailable",
     };
   }
-  const winner = pickAiIdentityWinner(scores, minConfidence());
+  const winner = pickAiIdentityWinner(scores);
   if (!winner.ok) {
+    const first = scores[0];
     const gate = decideFaceAiGate(
-      scores[0]
-        ? { samePerson: scores[0].samePerson, confidence: scores[0].confidence, similarity: scores[0].similarity }
-        : { samePerson: false, confidence: 0, similarity: 0 },
-      minConfidence(),
+      first
+        ? {
+            samePerson: first.samePerson,
+            uncertain: first.uncertain,
+            confidence: first.confidence,
+            similarity: first.similarity,
+          }
+        : { samePerson: false, uncertain: false, confidence: 0, similarity: 0 },
     );
-    return {
-      ok: false,
-      error: gate.ok
+    const error =
+      winner.code === "face_ai_low_confidence"
         ? "Yuz bir nechta xodimga o‘xshaydi. Kameraga tik qarang."
-        : gate.error,
-      code: winner.code,
-    };
+        : winner.code === "face_ai_uncertain"
+          ? "Yuz aniq o‘qilmadi. Kameraga tik qarab qayta urinib ko‘ring."
+          : gate.ok
+            ? "Yuz mos kelmadi — bu boshqa odam."
+            : gate.error;
+    return { ok: false, error, code: winner.code };
   }
   const local = opts.candidates.find((c) => c.id === winner.faceProfileId) ?? opts.candidates[0]!;
   logger.info(
     {
       event: "face_ai_login",
       userId: winner.userId,
-      confidence: winner.confidence,
+      fact: "same",
       candidates: scores.length,
     },
     "face AI login identity",
@@ -324,7 +319,6 @@ export async function resolveLoginIdentityWithAi(opts: {
   };
 }
 
-/** Eski yo‘l: bitta profil. Yangi login resolveLoginIdentityWithAi ishlatadi. */
 export async function verifyFaceWithAi(opts: {
   faceProfileId: number;
   liveSnapshot?: unknown;
@@ -338,10 +332,16 @@ export async function verifyFaceWithAi(opts: {
     ],
   });
   if (!resolved.ok) {
+    const code =
+      resolved.code === "face_ai_uncertain"
+        ? "face_ai_uncertain"
+        : resolved.code === "face_ai_unavailable"
+          ? "face_ai_low_confidence"
+          : "face_ai_mismatch";
     return {
       ok: false,
       error: resolved.error,
-      code: resolved.code === "face_ai_unavailable" ? "face_ai_low_confidence" : "face_ai_mismatch",
+      code,
       confidence: 0,
     };
   }

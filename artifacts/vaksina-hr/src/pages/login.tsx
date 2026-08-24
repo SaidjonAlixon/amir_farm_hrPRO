@@ -75,7 +75,7 @@ export default function Login() {
         <div className="mb-8 text-center">
           <img
             src={`${import.meta.env.BASE_URL}logo.png`}
-            alt="Amir Farm"
+            alt="AMIR FARM HR"
             className="mx-auto h-44 w-auto max-w-full rounded-2xl object-contain sm:h-56"
           />
         </div>

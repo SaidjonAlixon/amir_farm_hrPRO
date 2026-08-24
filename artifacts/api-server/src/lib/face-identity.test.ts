@@ -146,7 +146,7 @@ describe("face identity", () => {
     assert.equal(noTok.ok, false);
     const { token, steps } = issueFaceChallenge("login");
     const incomplete = evaluateLiveness(
-      { challenge: token, steps: ["center"], poses: ["center"], motion: 0.2 },
+      { challenge: token, steps: [], poses: [], motion: 0.2 },
       "login",
     );
     assert.equal(incomplete.ok, false);

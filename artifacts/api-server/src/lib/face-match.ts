@@ -275,7 +275,7 @@ export async function matchFaceForAuthWithAi(
   if (!isFaceAiEnabled()) return matchFaceForAuth(descriptor);
   const probes = (Array.isArray(descriptor[0]) ? descriptor : [descriptor]) as number[][];
   const rows = await loadFaceRows();
-  const candidates = listAuthCandidates(probes, rows);
+  const candidates = listAuthCandidates(probes, rows, 1);
   if (!candidates.length) {
     return {
       ok: false,
@@ -283,9 +283,15 @@ export async function matchFaceForAuthWithAi(
       code: "face_not_registered",
     };
   }
+  /** Faqat eng yaqin profil — ikkinchi odamga o‘tib ketmasin. */
   const resolved = await resolveLoginIdentityWithAi({
     liveSnapshot,
-    candidates: candidates.map((c) => ({ id: c.id, userId: c.userId, dist: c.dist, cosine: c.cosine })),
+    candidates: candidates.slice(0, 1).map((c) => ({
+      id: c.id,
+      userId: c.userId,
+      dist: c.dist,
+      cosine: c.cosine,
+    })),
   });
   if (!resolved.ok) {
     return { ok: false, error: resolved.error, code: resolved.code };

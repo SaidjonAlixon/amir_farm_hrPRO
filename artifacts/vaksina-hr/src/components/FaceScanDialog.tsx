@@ -47,16 +47,11 @@ type Challenge = FaceChallengeStep;
 const FALLBACK_ENROLL: Challenge[] = [
   { key: "center", pose: "center", need: 2 },
   { key: "left", pose: "left", need: 1 },
-  { key: "right", pose: "right", need: 1 },
-  { key: "up", pose: "up", need: 1 },
 ];
-const FALLBACK_LOGIN: Challenge[] = [
-  { key: "center", pose: "center", need: 1 },
-  { key: "left", pose: "left", need: 1 },
-];
+const FALLBACK_LOGIN: Challenge[] = [{ key: "center", pose: "center", need: 2 }];
 
-const MIN_SCORE_ENROLL = 0.62;
-const MIN_SCORE_LOGIN = 0.62;
+const MIN_SCORE_ENROLL = 0.45;
+const MIN_SCORE_LOGIN = 0.45;
 
 function stepHint(step: Challenge): string {
   if (step.blink) return "Ko‘zlarni yumib oching";
@@ -186,8 +181,8 @@ export function FaceScanDialog({ open, onOpenChange, mode, onCaptured, title, de
           audio: false,
           video: {
             facingMode: { ideal: "user" },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 640 },
+            height: { ideal: 480 },
           },
         });
         if (cancelled) {
@@ -273,36 +268,55 @@ export function FaceScanDialog({ open, onOpenChange, mode, onCaptured, title, de
           }
         };
 
+        let inFlight = false;
         const loop = async () => {
-          if (!running || cancelled) return;
+          if (!running || cancelled || inFlight) {
+            if (running && !cancelled && !inFlight) window.setTimeout(() => void loop(), 80);
+            return;
+          }
+          inFlight = true;
           const videoEl = videoRef.current;
           if (videoEl && videoEl.readyState >= 2) {
             try {
               const want = steps[poseI];
               if (!want) {
                 await finish(videoEl);
+                inFlight = false;
                 return;
               }
-              const result = await detectFaceDescriptor(videoEl, readFrame(), true, {
-                allowTurn: Boolean(want.pose && want.pose !== "center"),
-                allowBlink: Boolean(want.blink),
+              const turn = Boolean(want.pose && want.pose !== "center");
+              const blink = Boolean(want.blink);
+              let result = await detectFaceDescriptor(videoEl, readFrame(), true, {
+                allowTurn: turn,
+                allowBlink: blink,
+                trackOnly: true,
               });
               const alignStatus: FaceAlignStatus = result.status;
               const wantPose = want.pose ?? "center";
-              if (wantPose === "down" && result.pitch != null && pitchRef == null && result.descriptor) {
+              if (wantPose === "down" && result.pitch != null && pitchRef == null) {
                 pitchRef = result.pitch;
               }
               const poseOk = want.blink
-                ? Boolean(result.descriptor)
+                ? alignStatus === "ok" || Boolean(result.score)
                 : poseMatchesWant(wantPose, result.pose, result.yaw ?? 0, result.pitch ?? 0, pitchRef ?? undefined);
-              const inFrame = Boolean(result.descriptor) && (alignStatus === "ok" || alignStatus === "turn_face");
+              const inFrame = alignStatus === "ok" || alignStatus === "turn_face";
               setAligned(Boolean(inFrame && poseOk));
+
+              if (inFrame && poseOk && !want.blink) {
+                result = await detectFaceDescriptor(videoEl, readFrame(), true, {
+                  allowTurn: turn,
+                  allowBlink: blink,
+                  trackOnly: false,
+                });
+              }
+
               const minScore = mode === "enroll" ? MIN_SCORE_ENROLL : MIN_SCORE_LOGIN;
 
               if (!want.blink && (!result.descriptor || (result.score ?? 0) < minScore)) {
-                setPoseFill(0);
+                setPoseFill(poseBuckets[poseI]?.length ?? 0);
                 if (alignStatus !== "ok" && alignStatus !== "turn_face") setHint(faceAlignHint(alignStatus));
-                else setHint(stepHint(want));
+                else if (!poseOk) setHint(stepHint(want));
+                else setHint(result.descriptor ? stepHint(want) : "Yuz nuqtalari olinmoqda…");
               } else if (want.blink) {
                 if (result.descriptor) lastBlinkDesc = result.descriptor;
                 const ear = result.ear;
@@ -325,16 +339,17 @@ export function FaceScanDialog({ open, onOpenChange, mode, onCaptured, title, de
                   setHint(poseI >= steps.length ? "Tasdiqlanmoqda…" : stepHint(steps[poseI]!));
                   if (poseI >= steps.length) {
                     await finish(videoEl);
+                    inFlight = false;
                     return;
                   }
                 } else {
-                  setAligned(Boolean(result.descriptor));
+                  setAligned(Boolean(result.score));
                   setHint(blinkClosed ? "Ko‘zni oching" : "Ko‘zlarni yumib oching");
                 }
               } else if (!poseOk) {
                 lastDesc = null;
                 setHint(stepHint(want));
-              } else {
+              } else if (result.descriptor) {
                 lastDesc = result.descriptor;
                 if (wantPose === "center") {
                   lastPhoto = grabFaceSnapshot(videoEl) || lastPhoto;
@@ -351,6 +366,7 @@ export function FaceScanDialog({ open, onOpenChange, mode, onCaptured, title, de
                   pitchRef = null;
                   if (poseI >= steps.length) {
                     await finish(videoEl);
+                    inFlight = false;
                     return;
                   }
                   setHint(stepHint(steps[poseI]!));
@@ -358,10 +374,12 @@ export function FaceScanDialog({ open, onOpenChange, mode, onCaptured, title, de
               }
             } catch (err) {
               if (!cancelled) setError((err as Error)?.message || "Face ID xatosi");
+              inFlight = false;
               return;
             }
           }
-          if (running && !cancelled) window.setTimeout(() => void loop(), 70);
+          inFlight = false;
+          if (running && !cancelled) window.setTimeout(() => void loop(), 90);
         };
 
         void loop();
@@ -419,8 +437,8 @@ export function FaceScanDialog({ open, onOpenChange, mode, onCaptured, title, de
               )}
             />
           </div>
-          <p className="absolute left-0 right-0 top-5 z-10 text-center text-[15px] font-semibold drop-shadow">
-            {stepHint(currentStep)}
+          <p className="absolute left-0 right-0 top-5 z-10 px-3 text-center text-[15px] font-semibold drop-shadow">
+            {error || hint || stepHint(currentStep)}
           </p>
           {currentStep.pose && currentStep.pose !== "center" ? (
             <div className="absolute left-1/2 top-[18%] z-10 -translate-x-1/2">

@@ -297,43 +297,47 @@ function frameBrightness(video: HTMLVideoElement): number {
   }
 }
 
-/** Yuqori sifat: katta inputSize + qattiq score */
-const DETECT_OPTS = { inputSize: 416 as const, scoreThreshold: 0.5 };
-const MIN_DETECT_SCORE = 0.58;
+/** Kuzatuv yengil; 68 nuqta + embedding faqat qamralganda. */
+const TRACK_OPTS = { inputSize: 224 as const, scoreThreshold: 0.4 };
+const CAPTURE_OPTS = { inputSize: 320 as const, scoreThreshold: 0.45 };
+const MIN_DETECT_SCORE = 0.45;
 
 export async function detectFaceDescriptor(
   video: HTMLVideoElement,
   frame?: FaceOvalFrame | null,
   mirrored = true,
-  opts?: { allowTurn?: boolean; allowBlink?: boolean },
+  opts?: { allowTurn?: boolean; allowBlink?: boolean; trackOnly?: boolean },
 ): Promise<FaceDetectResult> {
   const faceapi = await ensureFaceModels();
-  const detector = new faceapi.TinyFaceDetectorOptions(DETECT_OPTS);
+  const trackOnly = Boolean(opts?.trackOnly);
+  const detector = new faceapi.TinyFaceDetectorOptions(trackOnly ? TRACK_OPTS : CAPTURE_OPTS);
 
-  if (video.videoWidth > 0 && video.videoWidth < 420) {
+  if (video.videoWidth > 0 && video.videoWidth < 240) {
     return { descriptor: null, status: "low_camera" };
   }
   const brightness = frameBrightness(video);
-  if (brightness < 42) {
+  if (brightness < 28) {
     return { descriptor: null, status: "dark" };
   }
-  if (!opts?.allowTurn && !opts?.allowBlink && frameSharpness(video) < 22) {
+  if (!trackOnly && !opts?.allowTurn && !opts?.allowBlink && frameSharpness(video) < 16) {
     return { descriptor: null, status: "low_quality" };
   }
 
-  let many: Array<{ detection: { score: number } }> = [];
-  try {
-    many = (await faceapi.detectAllFaces(video, detector)) ?? [];
-  } catch {
-    many = [];
-  }
-  if (many.length > 1) {
-    return { descriptor: null, status: "many_faces", faceCount: many.length };
+  if (!trackOnly) {
+    try {
+      const many = (await faceapi.detectAllFaces(video, detector)) ?? [];
+      if (many.length > 1) {
+        return { descriptor: null, status: "many_faces", faceCount: many.length };
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
-  const result = await faceapi.detectSingleFace(video, detector).withFaceLandmarks().withFaceDescriptor();
+  const chained = faceapi.detectSingleFace(video, detector).withFaceLandmarks();
+  const result = trackOnly ? await chained : await chained.withFaceDescriptor();
 
-  const minScore = opts?.allowTurn || opts?.allowBlink ? 0.38 : MIN_DETECT_SCORE;
+  const minScore = opts?.allowTurn || opts?.allowBlink ? 0.32 : MIN_DETECT_SCORE;
   if (!result || result.detection.score < minScore) {
     return { descriptor: null, status: "no_face" };
   }
@@ -344,15 +348,15 @@ export async function detectFaceDescriptor(
   const mapped = mapVideoBoxToElement(video, result.detection.box, mirrored);
   if (!mapped) return { descriptor: null, status: "no_face" };
 
-  if (ellipseNorm(mapped.cx, mapped.cy, frame) > (opts?.allowTurn ? 1.35 : 0.92)) {
+  if (ellipseNorm(mapped.cx, mapped.cy, frame) > (opts?.allowTurn ? 1.45 : 1.18)) {
     return { descriptor: null, status: "outside" };
   }
 
   const fillW = mapped.width / (frame.rx * 2);
   const fillH = mapped.height / (frame.ry * 2);
-  const minFill = opts?.allowTurn ? 0.22 : 0.38;
+  const minFill = opts?.allowTurn ? 0.18 : 0.28;
   if (fillW < minFill || fillH < minFill - 0.05) return { descriptor: null, status: "too_far" };
-  if (fillW > 1.75 || fillH > 1.75) return { descriptor: null, status: "too_close" };
+  if (fillW > 1.85 || fillH > 1.85) return { descriptor: null, status: "too_close" };
 
   const positions = result.landmarks.positions ?? [];
   const leftEye = result.landmarks.getLeftEye?.() ?? positions.slice(36, 42);
@@ -364,15 +368,24 @@ export async function detectFaceDescriptor(
   const eyesOpen = ear == null ? undefined : ear >= 0.19;
   const head = poseFromLandmarks(result.landmarks, result.detection.box, mirrored);
   if (!opts?.allowTurn && !opts?.allowBlink) {
-    if (noseOffsetRatio(result.landmarks, result.detection.box) > 0.2) {
+    if (noseOffsetRatio(result.landmarks, result.detection.box) > 0.24) {
       return { descriptor: null, status: "turn_face", score: result.detection.score, ear, eyesOpen, ...head };
     }
-    if (eyeWidthRatio(result.landmarks) < 0.58) {
-      return { descriptor: null, status: "turn_face", score: result.detection.score, ear, eyesOpen, ...head };
-    }
-    if (ear != null && ear < 0.13) {
+    if (ear != null && ear < 0.12) {
       return { descriptor: null, status: "covered", score: result.detection.score, ear, eyesOpen, ...head };
     }
+  }
+
+  if (trackOnly) {
+    return {
+      descriptor: null,
+      status: "ok",
+      score: result.detection.score,
+      ear,
+      eyesOpen,
+      faceCount: 1,
+      ...head,
+    };
   }
 
   if (!result.descriptor) {
@@ -517,8 +530,8 @@ export async function updateMyProfile(input: {
 
 export async function compressFaceSnapshotAsync(
   dataUrl: string | undefined,
-  maxSide = 480,
-  quality = 0.82,
+  maxSide = 720,
+  quality = 0.9,
 ): Promise<string | undefined> {
   if (!dataUrl?.startsWith("data:image/")) return undefined;
   try {
