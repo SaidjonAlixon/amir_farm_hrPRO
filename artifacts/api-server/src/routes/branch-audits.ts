@@ -456,7 +456,7 @@ router.get("/branch-audits/export", requireAuth, async (req: AuthRequest, res): 
 
   const rows = await loadFilteredAudits(req);
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "VAKSINA MED HR";
+  workbook.creator = "AMIR FARM HR";
   workbook.created = new Date();
 
   const headerStyle = (cell: ExcelJS.Cell, fill = "FF0B3A5C") => {
@@ -526,7 +526,7 @@ router.get("/branch-audits/export", requireAuth, async (req: AuthRequest, res): 
   const s1 = workbook.addWorksheet("Xulosa", { views: [{ state: "frozen", ySplit: 2 }] });
   s1.mergeCells("A1:F1");
   const t1 = s1.getCell("A1");
-  t1.value = `VAKSINA MED — Cheklist holati · ${rows.length} tashrif`;
+  t1.value = `AMIR FARM HR — Cheklist holati · ${rows.length} tashrif`;
   t1.font = { name: "Calibri", size: 13, bold: true, color: { argb: "FFFFFFFF" } };
   t1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B3A5C" } };
   t1.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
@@ -559,7 +559,7 @@ router.get("/branch-audits/export", requireAuth, async (req: AuthRequest, res): 
   const s2 = workbook.addWorksheet("Tashriflar", { views: [{ state: "frozen", ySplit: 2 }] });
   s2.mergeCells("A1:L1");
   const t2 = s2.getCell("A1");
-  t2.value = "VAKSINA MED — Tashriflar (sana, vaqt, filial, mudir, koordinator, lokatsiya, ball)";
+  t2.value = "AMIR FARM HR — Tashriflar (sana, vaqt, filial, mudir, koordinator, lokatsiya, ball)";
   t2.font = { name: "Calibri", size: 13, bold: true, color: { argb: "FFFFFFFF" } };
   t2.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B3A5C" } };
   s2.getRow(1).height = 28;
@@ -630,7 +630,7 @@ router.get("/branch-audits/export", requireAuth, async (req: AuthRequest, res): 
   const s3 = workbook.addWorksheet("Javoblar", { views: [{ state: "frozen", ySplit: 2 }] });
   s3.mergeCells("A1:H1");
   const t3 = s3.getCell("A1");
-  t3.value = "VAKSINA MED — Cheklist savollari va javoblar";
+  t3.value = "AMIR FARM HR — Cheklist savollari va javoblar";
   t3.font = { name: "Calibri", size: 13, bold: true, color: { argb: "FFFFFFFF" } };
   t3.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B3A5C" } };
   s3.getRow(1).height = 28;
@@ -707,7 +707,7 @@ router.get("/branch-audits/coverage/export", requireAuth, async (req: AuthReques
 
   const data = await loadCoverage(req);
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "VAKSINA MED HR";
+  workbook.creator = "AMIR FARM HR";
   workbook.created = new Date();
 
   const headerStyle = (cell: ExcelJS.Cell, fill = "FF0B3A5C") => {
@@ -740,7 +740,7 @@ router.get("/branch-audits/coverage/export", requireAuth, async (req: AuthReques
   const s1 = workbook.addWorksheet("Qamrov", { views: [{ state: "frozen", ySplit: 2 }] });
   s1.mergeCells("A1:F1");
   const t1 = s1.getCell("A1");
-  t1.value = `VAKSINA MED — Filial qamrovi · ${data.totals.branches} filial · kiritilgan ${data.totals.filled} · kiritilmagan ${data.totals.missing}`;
+  t1.value = `AMIR FARM HR — Filial qamrovi · ${data.totals.branches} filial · kiritilgan ${data.totals.filled} · kiritilmagan ${data.totals.missing}`;
   t1.font = { name: "Calibri", size: 13, bold: true, color: { argb: "FFFFFFFF" } };
   t1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B3A5C" } };
   t1.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
@@ -770,7 +770,7 @@ router.get("/branch-audits/coverage/export", requireAuth, async (req: AuthReques
   const s2 = workbook.addWorksheet("Filiallar", { views: [{ state: "frozen", ySplit: 2 }] });
   s2.mergeCells("A1:H1");
   const t2 = s2.getCell("A1");
-  t2.value = "VAKSINA MED — Har bir filial: kiritilgan / kiritilmagan";
+  t2.value = "AMIR FARM HR — Har bir filial: kiritilgan / kiritilmagan";
   t2.font = { name: "Calibri", size: 13, bold: true, color: { argb: "FFFFFFFF" } };
   t2.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B3A5C" } };
   s2.getRow(1).height = 28;

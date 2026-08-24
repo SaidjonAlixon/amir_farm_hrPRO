@@ -17,6 +17,7 @@ import {
   publicAppUrl,
   ROLE_LABEL_UZ,
   sendMessage,
+  setMiniAppMenuButton,
   setMyCommands,
   setWebhook,
   statusLabelUz,
@@ -191,7 +192,7 @@ function welcomeText(name?: string): string {
   return [
     `👋 <b>Xush kelibsiz${greet}!</b>`,
     ``,
-    `VAKSINA MED HR Telegram botiga hush kelibsiz.`,
+    `AMIR FARM HR Telegram botiga hush kelibsiz.`,
     `Davom etish uchun <b>login</b> va <b>parol</b>ni yuboring.`,
     ``,
     `<b>Namuna (1 qator):</b>`,
@@ -585,6 +586,7 @@ router.post("/telegram/setup", async (req, res): Promise<void> => {
       { command: "chiqish", description: "Bog‘lanishni uzish" },
       { command: "yordam", description: "Yordam" },
     ]);
+    await setMiniAppMenuButton(base);
     const info = await getWebhookInfo();
     res.json({ ok: true, webhookUrl, info });
   } catch (err) {

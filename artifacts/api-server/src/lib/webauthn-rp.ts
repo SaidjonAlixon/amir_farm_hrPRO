@@ -55,7 +55,7 @@ export function rpFromRequest(req: Request): { rpID: string; origin: string; rpN
   const proto = protoHeader || (hostname === "localhost" || isLoopbackIp(hostname) ? "http" : "https");
   const origin = originHeader || originFromUrl(referer) || `${proto}://${hostHeader}`;
 
-  return { rpID: hostname, origin, rpName: "VAKSINA MED" };
+  return { rpID: hostname, origin, rpName: "AMIR FARM HR" };
 }
 
 export function webauthnUnsupportedHostMessage(rpID: string): string | null {

@@ -1,6 +1,6 @@
 # Telegram bot + Mini App
 
-VAKSINA MED HR Telegram boti: login/parol qabul qiladi, faol akkaunt ma’lumotini chiqaradi va **Kirish** tugmasi orqali to‘liq Mini App (dastur) ochadi.
+AMIR FARM HR Telegram boti: login/parol qabul qiladi, faol akkaunt ma’lumotini chiqaradi va **Kirish** tugmasi orqali to‘liq Mini App (dastur) ochadi.
 
 ## Foydalanuvchi oqimi
 

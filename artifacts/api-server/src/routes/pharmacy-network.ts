@@ -364,12 +364,12 @@ router.get("/pharmacy-network/mudirs/export", requireAuth, async (req: AuthReque
   const mudirs = await loadOwnMudirCredentials(req.userId);
   const staff = await loadStaffCredentials(req.userId, "koordinator");
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "VAKSINA MED HR";
+  workbook.creator = "AMIR FARM HR";
   workbook.created = new Date();
 
   paintCredSheet(workbook, {
     name: "Mudirlar",
-    title: `VAKSINA MED — Mening mudirlarim · ${mudirs.length} ta`,
+    title: `AMIR FARM HR — Mening mudirlarim · ${mudirs.length} ta`,
     headers: ["F.I.Sh.", "Login", "Parol", "Filial"],
     widths: [32, 24, 16, 28],
     rows: mudirs.map((r) => [r.fullName, r.login, r.password, r.location]),
@@ -394,11 +394,11 @@ router.get("/pharmacy-network/staff-logins/export", requireAuth, async (req: Aut
   }
   const staff = await loadStaffCredentials(req.userId, "mudir");
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "VAKSINA MED HR";
+  workbook.creator = "AMIR FARM HR";
   workbook.created = new Date();
   paintCredSheet(workbook, {
     name: "Xodimlar",
-    title: `VAKSINA MED — Filial xodimlari (login/parol) · ${staff.length} ta`,
+    title: `AMIR FARM HR — Filial xodimlari (login/parol) · ${staff.length} ta`,
     headers: ["F.I.Sh.", "Lavozim", "Login", "Parol", "Filial"],
     widths: [32, 16, 24, 16, 28],
     rows: staff.map((r) => [r.fullName, r.roleLabel, r.login, r.password, r.location]),

@@ -194,7 +194,7 @@ router.get("/users/export", requireAuth, async (req: AuthRequest, res): Promise<
     .orderBy(asc(usersTable.fullName));
 
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "VAKSINA MED HR";
+  workbook.creator = "AMIR FARM HR";
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet("Foydalanuvchilar", {
@@ -204,7 +204,7 @@ router.get("/users/export", requireAuth, async (req: AuthRequest, res): Promise<
 
   sheet.mergeCells("A1:I1");
   const title = sheet.getCell("A1");
-  title.value = "VAKSINA MED — Foydalanuvchilar ro‘yxati (login va parollar)";
+  title.value = "AMIR FARM HR — Foydalanuvchilar ro‘yxati (login va parollar)";
   title.font = { name: "Calibri", size: 16, bold: true, color: { argb: "FFFFFFFF" } };
   title.fill = {
     type: "pattern",

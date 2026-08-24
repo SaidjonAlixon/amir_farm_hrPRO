@@ -1,4 +1,4 @@
-﻿import { Router, type IRouter } from "express";
+import { Router, type IRouter } from "express";
 import { and, eq, gte, lte, inArray } from "drizzle-orm";
 import ExcelJS from "exceljs";
 import {
@@ -1648,7 +1648,7 @@ router.get("/davomat/export", requireAuth, async (req: AuthRequest, res): Promis
     const report = buildReport(employees, records, from, to);
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = "VAKSINA MED HR";
+    workbook.creator = "AMIR FARM HR";
     workbook.created = new Date();
 
     const headerStyle = (cell: ExcelJS.Cell, fill = "FF0B3A5C") => {
@@ -1752,7 +1752,7 @@ router.get("/davomat/export", requireAuth, async (req: AuthRequest, res): Promis
     });
     sGrid.mergeCells(1, 1, 1, Math.max(lastCol, 6));
     const tGrid = sGrid.getCell("A1");
-    tGrid.value = `VAKSINA MED — Davomat jadvali (${from} — ${to}) · ${dates.length} kun · Norma ${WORK_START}–${WORK_END} · Har qator = 1 xodim, sanalar o‘ngga`;
+    tGrid.value = `AMIR FARM HR — Davomat jadvali (${from} — ${to}) · ${dates.length} kun · Norma ${WORK_START}–${WORK_END} · Har qator = 1 xodim, sanalar o‘ngga`;
     tGrid.font = { name: "Calibri", size: 13, bold: true, color: { argb: "FFFFFFFF" } };
     tGrid.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B3A5C" } };
     tGrid.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
@@ -1847,7 +1847,7 @@ router.get("/davomat/export", requireAuth, async (req: AuthRequest, res): Promis
     });
     s1.mergeCells("A1:F1");
     const t1 = s1.getCell("A1");
-    t1.value = `VAKSINA MED — Kunlik xulosa (${from} — ${to}) · Norma: ${WORK_START}–${WORK_END}`;
+    t1.value = `AMIR FARM HR — Kunlik xulosa (${from} — ${to}) · Norma: ${WORK_START}–${WORK_END}`;
     t1.font = { name: "Calibri", size: 13, bold: true, color: { argb: "FFFFFFFF" } };
     t1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B3A5C" } };
     t1.alignment = { vertical: "middle", horizontal: "left", indent: 1 };

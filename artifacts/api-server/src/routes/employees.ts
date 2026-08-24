@@ -312,7 +312,7 @@ router.get("/employees/export", requireAuth, async (req: AuthRequest, res): Prom
   }
 
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "VAKSINA MED HR";
+  workbook.creator = "AMIR FARM HR";
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet("Xodimlar", {
@@ -322,7 +322,7 @@ router.get("/employees/export", requireAuth, async (req: AuthRequest, res): Prom
 
   sheet.mergeCells("A1:K1");
   const title = sheet.getCell("A1");
-  title.value = "VAKSINA MED — Xodimlar to‘liq ro‘yxati";
+  title.value = "AMIR FARM HR — Xodimlar to‘liq ro‘yxati";
   title.font = { name: "Calibri", size: 14, bold: true, color: { argb: "FFFFFFFF" } };
   title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B3A5C" } };
   title.alignment = { vertical: "middle", horizontal: "left", indent: 1 };

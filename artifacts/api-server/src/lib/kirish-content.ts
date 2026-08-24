@@ -39,7 +39,7 @@ export const KIRISH_STAGES: KirishStageContent[] = [
       {
         id: "s1-1",
         title: "Xush kelibsiz",
-        body: "VAKSINA MED HR staj dasturi orqali siz apteka ish tartibi, mijoz bilan muloqot va xavfsizlik qoidalarini o‘rganasiz. Har bir bosqich: video, slayd, test.",
+        body: "AMIR FARM HR staj dasturi orqali siz apteka ish tartibi, mijoz bilan muloqot va xavfsizlik qoidalarini o‘rganasiz. Har bir bosqich: video, slayd, test.",
         accent: "#2AABEE",
       },
       {

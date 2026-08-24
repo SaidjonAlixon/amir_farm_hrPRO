@@ -787,7 +787,7 @@ export async function downloadHolatXlsxFile(
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `VAKSINA_Holat_${SECTION_FILE[section]}_${stamp}.xlsx`;
+  a.download = `AMIR_FARM_Holat_${SECTION_FILE[section]}_${stamp}.xlsx`;
   a.rel = "noopener";
   document.body.appendChild(a);
   a.click();

@@ -1,4 +1,4 @@
-# Vercel deployment — HR PROFI / VAKSINA HR
+# Vercel deployment — AMIR FARM HR
 
 ## 1. Database
 Use hosted Postgres (Neon, Supabase, or Vercel Postgres).

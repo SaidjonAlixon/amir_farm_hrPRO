@@ -52,11 +52,11 @@ function addRows(sheet: ExcelJS.Worksheet, rows: Array<Array<string | number | n
 
 async function holatWorkbook(report: HolatReport) {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "VAKSINA MED HR";
+  wb.creator = "AMIR FARM HR";
   wb.created = new Date();
 
   const s0 = wb.addWorksheet("Sonlar");
-  navyTitle(s0, 3, `VAKSINA MED — Holat · ${report.generatedAt}`);
+  navyTitle(s0, 3, `AMIR FARM HR — Holat · ${report.generatedAt}`);
   headerRow(s0, ["Ko‘rsatkich", "Son", "Manba"]);
   s0.columns = [{ width: 42 }, { width: 12 }, { width: 55 }];
   addRows(s0, [
@@ -226,7 +226,7 @@ router.get("/holat/export", requireAuth, async (req: AuthRequest, res): Promise<
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
-    res.setHeader("Content-Disposition", `attachment; filename="VAKSINA_Holat_${stamp}.xlsx"`);
+    res.setHeader("Content-Disposition", `attachment; filename="AMIR_FARM_Holat_${stamp}.xlsx"`);
     res.setHeader("Cache-Control", "no-store");
     res.send(buffer);
   } catch (err) {

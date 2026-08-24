@@ -1,6 +1,6 @@
-# VAKSINA MED HR — platforma nima qila oladi
+# AMIR FARM HR — platforma nima qila oladi
 
-Bu hujjat **HR PROFI / VAKSINA MED HR** tizimining imkoniyatlari, bo‘limlari va **barcha rollar**ni tushuntiradi.
+Bu hujjat **HR PROFI / AMIR FARM HR** tizimining imkoniyatlari, bo‘limlari va **barcha rollar**ni tushuntiradi.
 
 Kirish: login + parol yoki **Face ID** (kamera, HTTPS/localhost). Telegram Mini App orqali ham ochiladi.
 

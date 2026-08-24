@@ -1,3 +1,27 @@
+import { readFileSync } from "fs";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = resolve(__dirname, "../..");
+try {
+  const raw = readFileSync(resolve(root, ".env"), "utf8");
+  for (const line of raw.split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+    if (!m) continue;
+    let val = m[2];
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+    if (!process.env[m[1]]) process.env[m[1]] = val;
+  }
+} catch {
+  /* .env ixtiyoriy */
+}
+
 /**
  * Telegram webhook o‘rnatish.
  *
@@ -75,6 +99,18 @@ async function viaTelegramDirect() {
         { command: "chiqish", description: "Bog‘lanishni uzish" },
         { command: "yordam", description: "Yordam" },
       ],
+    }),
+  });
+
+  await fetch(`https://api.telegram.org/bot${token}/setChatMenuButton`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      menu_button: {
+        type: "web_app",
+        text: "Kirish",
+        web_app: { url: `${withProto}/tg` },
+      },
     }),
   });
 

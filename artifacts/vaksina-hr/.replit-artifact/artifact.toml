@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "VAKSINA HR"
+title = "AMIR FARM HR"
 version = "1.0.0"
 id = "artifacts/vaksina-hr"
 router = "path"
