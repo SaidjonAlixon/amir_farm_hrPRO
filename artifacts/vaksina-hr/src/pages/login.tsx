@@ -72,11 +72,11 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
+        <div className="mb-8 text-center">
           <img
-            src={`${import.meta.env.BASE_URL}logo3d.png`}
-            alt="VAKSINA MED HR"
-            className="mx-auto h-28 w-auto max-w-full object-contain sm:h-36"
+            src={`${import.meta.env.BASE_URL}logo.png`}
+            alt="Amir Farm"
+            className="mx-auto h-44 w-auto max-w-full rounded-2xl object-contain sm:h-56"
           />
         </div>
 

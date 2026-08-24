@@ -1058,15 +1058,21 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
           />
           <div className="relative flex items-center justify-between gap-2">
             <div className={cn('min-w-0', desktopCollapsed && 'md:hidden')}>
-              <p className="text-[15px] font-bold tracking-tight text-white">VAKSINA MED</p>
-              <p className="mt-0.5 text-[11px] font-medium tracking-wide text-sky-200/55">
+              <img
+                src={`${import.meta.env.BASE_URL}logo.png`}
+                alt="Amir Farm"
+                className="h-10 w-auto max-w-[180px] object-contain object-left"
+              />
+              <p className="mt-1 text-[11px] font-medium tracking-wide text-sky-200/55">
                 HR platforma
               </p>
             </div>
             {desktopCollapsed ? (
-              <div className="mx-auto hidden h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-[11px] font-bold text-sky-200 md:flex">
-                VM
-              </div>
+              <img
+                src={`${import.meta.env.BASE_URL}logo.png`}
+                alt="Amir Farm"
+                className="mx-auto hidden h-9 w-9 rounded-xl object-cover md:block"
+              />
             ) : null}
             <button
               type="button"
@@ -1223,7 +1229,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
       </Dialog>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden w-full">
-        <header className="safe-top z-10 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-slate-200/80 bg-white/95 px-3 backdrop-blur-md sm:h-16 sm:px-5">
+        <header className="safe-top z-10 flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200/80 bg-white/95 px-3 backdrop-blur-md sm:h-[4.5rem] sm:px-5">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <button
               type="button"
@@ -1235,9 +1241,9 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
               <Menu className="h-6 w-6" />
             </button>
             <img
-              src={`${import.meta.env.BASE_URL}logo3d.png`}
-              alt="VAKSINA MED HR"
-              className="h-8 w-auto max-w-[min(48vw,168px)] object-contain object-left sm:h-10 sm:max-w-[200px]"
+              src={`${import.meta.env.BASE_URL}logo.png`}
+              alt="Amir Farm"
+              className="h-11 w-auto max-w-[min(58vw,240px)] object-contain object-left sm:h-14 sm:max-w-[280px]"
             />
           </div>
 
