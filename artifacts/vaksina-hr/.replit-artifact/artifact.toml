@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "VAKSINA HR"
+version = "1.0.0"
+id = "artifacts/vaksina-hr"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 26253
+
+[services.development]
+run = "pnpm --filter @workspace/vaksina-hr run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/vaksina-hr", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/vaksina-hr/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "26253"
+BASE_PATH = "/"

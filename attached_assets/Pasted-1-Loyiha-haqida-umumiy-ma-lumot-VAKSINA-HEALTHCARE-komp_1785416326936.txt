@@ -1,0 +1,127 @@
+1. Loyiha haqida umumiy ma'lumot
+VAKSINA HEALTHCARE kompaniyasi uchun barcha bo'limlarning kadrlar bo'yicha ehtiyojlarini bitta markazlashtirilgan onlayn platforma orqali boshqarish tizimi ishlab chiqiladi. Tizim xodimga bo'lgan ehtiyojni bo'lim tomonidan bildirishdan tortib, yangi xodimning stajirovkadan o'tib, doimiy shtatga qabul qilinishigacha bo'lgan barcha bosqichlarni bir joyda, ketma-ket va nazorat qilinadigan holatda yuritadi.
+Platforma zamonaviy, qulay va vizual jihatdan tushunarli bo'lishi, har bir xodim (nomzod) uchun bosqichlar ketma-ketligi (progress-bar / "pipeline" ko'rinishida) aniq va tez ko'rinishi kerak.
+1.1. Loyihaning dolzarbligi
+•	Bo'limlar o'rtasida kadrlar bo'yicha so'rovlar (zayavka) hozircha tartibsiz, og'zaki yoki messenjer orqali yuboriladi — bu jarayonni sekinlashtiradi va nazoratni qiyinlashtiradi.
+•	E'lonlar turli platformalarda (HeadHunter, OLX, Telegram, Instagram, veb-sayt) qo'lda joylashtiriladi, natijalar kuzatilmaydi.
+•	Nomzodlar bo'yicha ma'lumotlar (rezyume, suhbat natijalari, baholar) markazlashtirilmagan holda saqlanadi.
+•	Rekruter, HR va trenerning ishi bir-biridan ajratilmagan, kim nima qilganini kuzatib bo'lmaydi.
+2. Loyihaning maqsadi va vazifalari
+2.1. Asosiy maqsad
+Kadrlar tanlovi jarayonini boshidan oxirigacha (end-to-end) raqamlashtirish: zayavka berishdan — yangi xodimni ishga rasman qabul qilib, mentor/koordinatorga biriktirishgacha bo'lgan barcha bosqichlarni yagona tizimda, rollarga bo'lingan holda, to'liq nazorat va hisobotlilik bilan yuritish.
+2.2. Asosiy vazifalar
+1.	Bo'limlarga xodimga ehtiyoj bo'yicha onlayn zayavka berish imkoniyatini yaratish.
+2.	Zayavkalarni rekruting/HR bo'limiga avtomatik yetkazish va kim qabul qilganini tizimda ko'rsatish.
+3.	Zayavka asosida avtomatik vakansiya (e'lon) shakllantirish (sarlavha, tavsif, taxminiy ish haqi va boshqa shartlar bilan).
+4.	E'lonni bir nechta tashqi kanallarga (HeadHunter, OLX, Telegram, Instagram, veb-sayt) joylashtirish va har bir kanal statusini logotipi va nomi bilan ko'rsatish.
+5.	Nomzodlar bilan telefon orqali dastlabki suhbat va ularning to'liq bazasini (3x4 surat, anketa) yig'ish.
+6.	Onlayn (video/audio) suhbat bosqichini soha bo'yicha savol-javoblar bilan yuritish va "Tajribali / Tajribasiz" statusini belgilash.
+7.	Pre-boarding — nomzodni lavozim vazifalari bilan tanishtirish bosqichini qayd qilish.
+8.	Offline suhbatga (HR va Trener bilan) taklif qilish, sana/vaqt belgilash, kelish-kelmaslik statusini kuzatish.
+9.	HR/Trener tasdig'i asosida "Suhbatdan o'tdi / o'tmadi" qarorini rasmiylashtirish.
+10.	Job offer taqdim etish va zarur hujjatlarni yig'ish.
+11.	Stajirovka davrini (muddati, vazifalari, baholash tizimi bilan) boshqarish.
+12.	Xodimni yakuniy ishga qabul qilish va unga mentor yoki koordinator biriktirish.
+13.	Barcha jarayonni admin va bosh direktor darajasida to'liq ko'rinadigan, tahlil qilinadigan qilish.
+3. Foydalanuvchi rollari
+Tizimda quyidagi rollar bo'lishi va har bir rol faqat o'ziga tegishli vazifa va bosqichlarni ko'rishi/bajarishi kerak (Role-Based Access Control — RBAC).
+Rol	Tavsif va asosiy vazifalar
+Bo'lim boshlig'i / Xodim (Zayavka beruvchi)	O'z bo'limiga xodim kerak bo'lganda tizimda zayavka (so'rov) shakllantiradi: lavozim, soni, talablar, taxminiy ish haqi, zaruriyat muddati. Zayavka holatini (ko'rib chiqilmoqda / e'lon berildi / bajarildi) kuzatib boradi.
+Rekruter	Tushgan zayavkalarni qabul qiladi, vakansiya (e'lon) yaratadi va kanallarga joylashtiradi, nomzodlar bazasini yuritadi, telefon va onlayn suhbatlarni o'tkazadi, nomzodni keyingi bosqichga (HR/Trener offline suhbatiga) yuboradi, jarayon ketma-ketligini boshqaradi.
+HR	Rekruterdan kelgan nomzodlar bilan offline suhbat o'tkazadi, umumiy mos kelish-kelmasligini baholaydi, job offer tayyorlaydi, hujjatlarni yig'ish jarayonini nazorat qiladi, yakuniy qabulni tasdiqlaydi.
+Trener	Offline suhbatda kasbiy/amaliy bilimlarni baholaydi, pre-boarding va stajirovka davrida xodimni o'qitadi, baholash varaqasini to'ldiradi, stajirovka natijasi bo'yicha xulosa beradi.
+Mentor / Koordinator	Stajirovkadan o'tib, ishga qabul qilingan xodimga biriktiriladi, uning moslashuv jarayonini kuzatib boradi (tizimda faqat shu bo'limga tegishli xodimlar bo'yicha ko'rinish).
+Admin	Barcha bo'limlar, rollar, foydalanuvchilar, e'lon kanallari va tizim sozlamalarini boshqaradi. Har qanday xodim va bosqich bo'yicha to'liq tarixni ko'radi.
+Bosh direktor / Rahbariyat	Barcha jarayonlar, statistikalar va hisobotlarni faqat ko'rish (read-only) rejimida kuzatadi: qancha zayavka, qancha vakansiya, qancha nomzod, qaysi bosqichda qancha vaqt sarflanmoqda va h.k.
+4. To'liq ish jarayoni (Workflow / Pipeline)
+Har bir nomzod/xodim uchun tizimda vizual "pipeline" (bosqichlar zanjiri) ko'rsatiladi — masalan, gorizontal progress-bar yoki Kanban ko'rinishida, har bir bosqich rangi bilan (kutilmoqda — kulrang, jarayonda — sariq, muvaffaqiyatli — yashil, rad etilgan — qizil) belgilanadi. Quyida barcha bosqichlar tartib bilan keltirilgan.
+4.1-bosqich. Zayavka berish
+•	Bo'lim (yoki bo'lim boshlig'i) tizimga kirib, yangi zayavka shakllantiradi.
+•	Maydonlar: bo'lim nomi, lavozim, kerakli soni, ish tavsifi, talablar, taxminiy ish haqi, zaruriyat sababi/muddati, ustuvorlik darajasi (shoshilinch/oddiy).
+•	Zayavka yuborilgach, avtomatik ravishda rekruting/HR bo'limiga bildirishnoma (notification) boradi.
+•	Tizimda zayavka statusi ko'rinadi: "Yuborildi" → "Ko'rib chiqilmoqda" → "Qabul qilindi" → "E'lon berildi" → "Yopildi".
+4.2-bosqich. Zayavkani qabul qilish
+•	Rekruter yoki HR zayavkani "o'ziga oladi" (assign) — tizimda kim qabul qilgani (ism, rol, vaqt) aniq ko'rsatiladi.
+•	Agar zayavka belgilangan vaqt ichida hech kim tomonidan olinmasa, tizim avtomatik eslatma yuboradi (masalan, HR rahbariga).
+4.3-bosqich. Vakansiya (e'lon) yaratish
+•	Zayavka ma'lumotlari asosida tizim avtomatik e'lon shabloni tayyorlaydi, rekruter uni tahrirlab tasdiqlaydi.
+•	E'lon tarkibida: sarlavha (lavozim nomi), to'liq ma'lumot (vazifalar, talablar, sharoitlar), taxminiy ish haqi, ish joyi, ish grafigi va boshqa qo'shimcha shartlar (masalan, ijtimoiy paket, transport, ovqatlanish) bo'lishi kerak.
+4.4-bosqich. E'lonni kanallarga joylashtirish
+•	Bitta e'londan bir nechta tashqi platformaga bir vaqtda joylashtiriladi: HeadHunter, OLX, kompaniya veb-sayti, Telegram, Instagram (va zarur bo'lsa boshqa kanallar admin panelidan qo'shiladi).
+•	Har bir e'lon kartochkasi ichida — qaysi kanallarda joylashtirilgani, shu kanalning rasmiy logotipi va nomi bilan aniq ko'rsatiladi (masalan, ikonka + "HeadHunter" yozuvi, ikonka + "Telegram" yozuvi).
+•	Har bir kanal bo'yicha statistika (ko'rishlar, ariza berganlar soni) ko'rsatilishi mumkin bo'lsa, imkoniyat sifatida ko'zda tutiladi.
+4.5-bosqich. Nomzodlar bazasi va telefon suhbati
+•	E'lon orqali murojaat qilgan nomzodlar avtomatik yoki qo'lda tizimga "Nomzod" sifatida kiritiladi.
+•	Rekruter nomzod bilan telefon orqali bog'lanadi va suhbat davomida ma'lumotlarni to'g'ridan-to'g'ri tizimga kiritadi.
+•	Nomzod profilida: F.I.Sh., tug'ilgan sana, telefon, manzil, 3x4 rasm (yuklash), ta'lim, ish tajribasi, kutilayotgan ish haqi, qo'shimcha izohlar saqlanadi.
+•	Suhbat yakunida rekruter "Mos keladi" yoki "Mos kelmaydi" statusini belgilaydi va sababini yozadi; "mos kelmaydi" bo'lsa jarayon shu yerda yopiladi, "mos keladi" bo'lsa keyingi bosqichga o'tadi.
+4.6-bosqich. Onlayn suhbat (Rekruter / HR)
+•	Rekruter yoki HR nomzod bilan onlayn (video/telefon) suhbat o'tkazadi — faqat shu soha/lavozimga oid aniq savol-javoblar tizimda oldindan tayyorlangan shablon asosida yoziladi.
+•	Har bir savolga nomzodning javobi alohida maydonga kiritiladi (savol-javob jurnali sifatida saqlanadi).
+•	Suhbat natijasida nomzodga "Tajribali" yoki "Tajribasiz" statusi beriladi, hamda umumiy baho (masalan, 1-5 ball yoki ✔/✘) qo'yiladi.
+4.7-bosqich. Pre-boarding
+•	Nomzod lavozim vazifalari, kompaniya ichki tartib-qoidalari, jamoaviy tuzilma bilan tanishtiriladi.
+•	Tizimda qaysi mavzular bo'yicha tanishtirilgani belgilanadi (checklist ko'rinishida): lavozim vazifalari, ish tartibi, kompaniya qadriyatlari, xavfsizlik qoidalari va h.k.
+4.8-bosqich. Offline suhbat (HR va Trener)
+•	Nomzod bevosita ofisga/klinikaga suhbatga taklif qilinadi — tizimda sana va vaqt belgilanadi, avtomatik eslatma (SMS/Telegram) yuboriladi.
+•	Kelish holati qayd etiladi: "Keldi" / "Kelmadi" / "Qayta belgilandi".
+•	HR va Trener birgalikda yoki alohida suhbat o'tkazadi, o'z bahosini va izohini kiritadi.
+4.9-bosqich. Yakuniy tasdiqlash
+•	HR va/yoki Trener tomonidan "Suhbatdan o'tdi" yoki "Suhbatdan o'tmadi" yakuniy qarori chiqariladi.
+•	Qaror sababi bilan birga tizimga yoziladi va nomzod kartochkasida saqlanib qoladi (keyingi murojaatlar uchun tarix sifatida foydali).
+4.10-bosqich. Job offer va hujjatlar
+•	Nomzodga rasmiy taklif (job offer) — lavozim, ish haqi, ish sharoitlari bilan yuboriladi.
+•	Kerakli hujjatlar ro'yxati (pasport, diplom, sertifikatlar, tibbiy kitobcha va h.k.) tizimda checklist sifatida yuritiladi, har biri yuklab qo'yiladi yoki "topshirildi" deb belgilanadi.
+4.11-bosqich. Stajirovka
+•	Stajirovka boshlanish va tugash sanalari belgilanadi.
+•	Stajirovka davomida bajarilgan vazifalar va topshiriqlar ro'yxati yuritiladi.
+•	Baholash tizimi: har hafta yoki belgilangan davrda Trener/Mentor tomonidan baho (masalan, 1-5 ball yoki mezonlar bo'yicha) qo'yiladi, umumiy natija hisoblanadi.
+4.12-bosqich. Yakuniy ishga qabul qilish
+•	Stajirovka muvaffaqiyatli yakunlangach, xodim rasman ishga qabul qilinadi (status: "Ishga qabul qilindi").
+•	Xodimga mentor yoki koordinator biriktiriladi — tizimda kim, qaysi bo'lim vakili biriktirilgani ko'rsatiladi.
+•	Shu bosqichdan so'ng xodim profili "Faol xodim" bazasiga o'tkaziladi, rekruting jarayoni yopiladi.
+5. Bosqichlar bo'yicha rollar va javobgarlik matritsasi
+Bosqich	Mas'ul rol	Ko'ra oladigan boshqa rollar
+1. Zayavka berish	Bo'lim / Xodim	Rekruter, HR, Admin, Direktor
+2. Zayavkani qabul qilish	Rekruter / HR	Bo'lim (status), Admin, Direktor
+3. E'lon yaratish	Rekruter	HR, Admin, Direktor
+4. Kanallarga joylashtirish	Rekruter	HR, Admin, Direktor
+5. Telefon suhbati / baza	Rekruter	HR, Admin
+6. Onlayn suhbat	Rekruter / HR	Admin, Direktor
+7. Pre-boarding	Rekruter / Trener	HR, Admin
+8. Offline suhbat	HR / Trener	Rekruter (ko'rish), Admin, Direktor
+9. Yakuniy tasdiqlash	HR / Trener	Rekruter (ko'rish), Admin, Direktor
+10. Job offer va hujjatlar	HR	Rekruter, Admin
+11. Stajirovka	Trener / Mentor	HR, Admin, Direktor
+12. Ishga qabul qilish	HR / Admin	Barcha rollar (ko'rish), Direktor
+Muhim tamoyil: har bir rol faqat o'ziga tegishli bosqichda "tahrirlash" huquqiga ega, boshqa bosqichlarni faqat "ko'rish" rejimida kuzatadi. Rekruter butun jarayonni boshdan boshigacha yuritadi va nazorat qiladi, biroq HR va Trenerga tegishli bosqichlarni (offline suhbat, tasdiqlash) faqat o'zlari bajaradi.
+6. Boshqaruv paneli (Dashboard) talablari
+6.1. Admin va Bosh direktor uchun
+•	Har bir xodim/nomzod bo'yicha bosqichlar ketma-ketligi (pipeline) bosilganda batafsil ochiladigan, vizual, zamonaviy ko'rinishda (masalan, gorizontal timeline yoki Kanban doska).
+•	Filtrlar: bo'lim, lavozim, rekruter, sana oralig'i, status bo'yicha.
+•	Umumiy statistika: ochiq zayavkalar soni, faol vakansiyalar, jarayondagi nomzodlar, o'rtacha ishga olish muddati (time-to-hire), kanallar bo'yicha samaradorlik.
+•	Har bir bosqichda qancha vaqt sarflangani (bottleneck tahlili) ko'rsatilishi.
+6.2. Rekruter uchun
+•	Faqat o'ziga biriktirilgan zayavkalar va nomzodlar ro'yxati, ularning joriy bosqichi.
+•	Kunlik/haftalik vazifalar ro'yxati (masalan, bugun qo'ng'iroq qilinishi kerak bo'lgan nomzodlar).
+6.3. HR va Trener uchun
+•	O'ziga tayinlangan offline suhbatlar, stajiyorlar ro'yxati va ularning baholash jadvali.
+6.4. Bo'lim boshlig'i uchun
+•	O'z zayavkalari holati, qancha nomzod jarayonda ekani, taxminiy yopilish sanasi.
+7. Ma'lumotlar bazasi tuzilishi (asosiy obyektlar)
+Jadval / obyekt	Asosiy maydonlar
+Users (Foydalanuvchilar)	id, F.I.Sh., rol, bo'lim, login, telefon, holat
+Departments (Bo'limlar)	id, nomi, rahbari
+Requests (Zayavkalar)	id, bo'lim, lavozim, soni, talablar, ish haqi, muddat, status, kim qabul qilgan, sana
+Vacancies (E'lonlar)	id, zayavka_id, sarlavha, tavsif, ish haqi, kanallar ro'yxati, status, yaratilgan sana
+Channels (Kanallar)	id, nomi (HeadHunter, OLX, Telegram, Instagram, Veb-sayt...), logotip, holat
+Candidates (Nomzodlar)	id, F.I.Sh., tug'ilgan sana, telefon, manzil, 3x4 rasm, ta'lim, tajriba, kutilgan ish haqi, vakansiya_id
+PhoneInterviews (Telefon suhbati)	id, nomzod_id, rekruter_id, sana, izoh, status (mos/mos emas)
+OnlineInterviews (Onlayn suhbat)	id, nomzod_id, savol-javoblar (JSON), tajriba_darajasi, baho, sana
+Preboarding	id, nomzod_id, checklist (JSON), sana
+OfflineInterviews (Offline suhbat)	id, nomzod_id, sana, vaqt, HR_id, trener_id, kelish_holati, natija, izoh
+Offers (Job offer)	id, nomzod_id, lavozim, ish haqi, hujjatlar_checklist (JSON), status
+Internships (Stajirovka)	id, xodim_id, boshlanish_sana, tugash_sana, vazifalar (JSON), baholar (JSON)
+Employees (Faol xodimlar)	id, F.I.Sh., lavozim, bo'lim, mentor_id/koordinator_id, ishga_qabul_sana
+Notifications	id, foydalanuvchi_id, matn, turi, sana, o'qilgan/o'qilmagan
+AuditLog (Tarix jurnali)	id, foydalanuvchi_id, harakat, obyekt, sana

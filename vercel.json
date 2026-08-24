@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "pnpm -w install --no-frozen-lockfile --prod=false",
+  "buildCommand": "pnpm -w run build:vercel",
+  "outputDirectory": "artifacts/vaksina-hr/dist/public",
+  "framework": null,
+  "functions": {
+    "api/index.mjs": {
+      "maxDuration": 60,
+      "includeFiles": "{artifacts/api-server/dist/**,node_modules/pg/**}"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/jobs/vacancy-reminders",
+      "schedule": "*/10 * * * *"
+    }
+  ]
+}
