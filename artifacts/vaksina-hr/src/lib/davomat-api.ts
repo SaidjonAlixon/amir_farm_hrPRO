@@ -335,10 +335,10 @@ export async function fetchMyDavomat(): Promise<{
 }
 
 export const DAVOMAT_GEOFENCE_METERS = 35;
-/** 41°13'09.3"N 69°16'22.9"E */
-export const DAVOMAT_SITE_LAT = 41 + 13 / 60 + 9.3 / 3600;
-export const DAVOMAT_SITE_LNG = 69 + 16 / 60 + 22.9 / 3600;
-export const DAVOMAT_SITE_LABEL = "41°13'09.3\"N 69°16'22.9\"E";
+/** 41°21'05.5"N 69°23'06.7"E */
+export const DAVOMAT_SITE_LAT = 41 + 21 / 60 + 5.5 / 3600;
+export const DAVOMAT_SITE_LNG = 69 + 23 / 60 + 6.7 / 3600;
+export const DAVOMAT_SITE_LABEL = "41°21'05.5\"N 69°23'06.7\"E";
 
 export function haversineMeters(
   lat1: number,

@@ -26,6 +26,23 @@ import {
 
 const STAFF_ORG = new Set(["pharmacist", "intern", "supervisor", "manager"]);
 
+function isMissingRelation(err: unknown): boolean {
+  const e = err as { code?: string; message?: string };
+  return e?.code === "42P01" || /does not exist/i.test(String(e?.message || ""));
+}
+
+async function skipIfMissing(label: string, fn: () => Promise<unknown>): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    if (isMissingRelation(err)) {
+      console.warn(`hard-delete skip ${label}: table missing`);
+      return;
+    }
+    throw err;
+  }
+}
+
 export function canHardDeletePharmacyNetwork(role?: string): boolean {
   return (
     role === "admin" ||
@@ -39,69 +56,109 @@ export function canHardDeletePharmacyNetwork(role?: string): boolean {
 async function purgeUserSideEffects(userIds: number[]) {
   if (!userIds.length) return;
 
-  await db.delete(faceProfilesTable).where(inArray(faceProfilesTable.userId, userIds));
-  await db.delete(webauthnCredentialsTable).where(inArray(webauthnCredentialsTable.userId, userIds));
-  await db.delete(webauthnChallengesTable).where(inArray(webauthnChallengesTable.userId, userIds));
-  await db.delete(kirishProgressTable).where(inArray(kirishProgressTable.userId, userIds));
-  await db.delete(notificationsTable).where(inArray(notificationsTable.userId, userIds));
-  await db.delete(goalDailyLogsTable).where(inArray(goalDailyLogsTable.userId, userIds));
-  await db.delete(userGoalsTable).where(inArray(userGoalsTable.userId, userIds));
-  await db.delete(remindersTable).where(inArray(remindersTable.userId, userIds));
-  await db.delete(telegramAuthTokensTable).where(inArray(telegramAuthTokensTable.userId, userIds));
-  await db.delete(chatMembersTable).where(inArray(chatMembersTable.userId, userIds));
-  await db.delete(chatMessagesTable).where(inArray(chatMessagesTable.senderId, userIds));
+  await skipIfMissing("face_profiles", () =>
+    db.delete(faceProfilesTable).where(inArray(faceProfilesTable.userId, userIds)),
+  );
+  await skipIfMissing("webauthn_credentials", () =>
+    db.delete(webauthnCredentialsTable).where(inArray(webauthnCredentialsTable.userId, userIds)),
+  );
+  await skipIfMissing("webauthn_challenges", () =>
+    db.delete(webauthnChallengesTable).where(inArray(webauthnChallengesTable.userId, userIds)),
+  );
+  await skipIfMissing("kirish_progress", () =>
+    db.delete(kirishProgressTable).where(inArray(kirishProgressTable.userId, userIds)),
+  );
+  await skipIfMissing("notifications", () =>
+    db.delete(notificationsTable).where(inArray(notificationsTable.userId, userIds)),
+  );
+  await skipIfMissing("goal_daily_logs", () =>
+    db.delete(goalDailyLogsTable).where(inArray(goalDailyLogsTable.userId, userIds)),
+  );
+  await skipIfMissing("user_goals", () =>
+    db.delete(userGoalsTable).where(inArray(userGoalsTable.userId, userIds)),
+  );
+  await skipIfMissing("reminders", () =>
+    db.delete(remindersTable).where(inArray(remindersTable.userId, userIds)),
+  );
+  await skipIfMissing("telegram_auth_tokens", () =>
+    db.delete(telegramAuthTokensTable).where(inArray(telegramAuthTokensTable.userId, userIds)),
+  );
+  await skipIfMissing("chat_members", () =>
+    db.delete(chatMembersTable).where(inArray(chatMembersTable.userId, userIds)),
+  );
+  await skipIfMissing("chat_messages", () =>
+    db.delete(chatMessagesTable).where(inArray(chatMessagesTable.senderId, userIds)),
+  );
 
-  await db
-    .update(departmentsTable)
-    .set({ headId: null })
-    .where(inArray(departmentsTable.headId, userIds));
+  await skipIfMissing("departments.head", () =>
+    db
+      .update(departmentsTable)
+      .set({ headId: null })
+      .where(inArray(departmentsTable.headId, userIds)),
+  );
 
-  await db
-    .update(branchNeedsTable)
-    .set({ assignedUserId: null })
-    .where(inArray(branchNeedsTable.assignedUserId, userIds));
+  await skipIfMissing("branch_needs.assigned", () =>
+    db
+      .update(branchNeedsTable)
+      .set({ assignedUserId: null })
+      .where(inArray(branchNeedsTable.assignedUserId, userIds)),
+  );
 
-  await db
-    .delete(tasksTable)
-    .where(
-      and(eq(tasksTable.assigneeKind, "user"), inArray(tasksTable.assigneeId, userIds)),
-    );
+  await skipIfMissing("tasks.user", () =>
+    db
+      .delete(tasksTable)
+      .where(
+        and(eq(tasksTable.assigneeKind, "user"), inArray(tasksTable.assigneeId, userIds)),
+      ),
+  );
 }
 
 async function purgeEmployeeSideEffects(employeeIds: number[]) {
   if (!employeeIds.length) return;
 
-  await db
-    .delete(attendanceRecordsTable)
-    .where(inArray(attendanceRecordsTable.employeeId, employeeIds));
-  await db.delete(internshipsTable).where(inArray(internshipsTable.employeeId, employeeIds));
-  await db
-    .delete(staffingAlertsTable)
-    .where(
-      or(
-        inArray(staffingAlertsTable.employeeId, employeeIds),
-        inArray(staffingAlertsTable.managerEmployeeId, employeeIds),
+  await skipIfMissing("attendance_records", () =>
+    db
+      .delete(attendanceRecordsTable)
+      .where(inArray(attendanceRecordsTable.employeeId, employeeIds)),
+  );
+  await skipIfMissing("internships", () =>
+    db.delete(internshipsTable).where(inArray(internshipsTable.employeeId, employeeIds)),
+  );
+  await skipIfMissing("staffing_alerts", () =>
+    db
+      .delete(staffingAlertsTable)
+      .where(
+        or(
+          inArray(staffingAlertsTable.employeeId, employeeIds),
+          inArray(staffingAlertsTable.managerEmployeeId, employeeIds),
+        ),
       ),
-    );
-  await db
-    .delete(branchAuditsTable)
-    .where(inArray(branchAuditsTable.managerEmployeeId, employeeIds));
-  await db
-    .delete(branchNeedsTable)
-    .where(inArray(branchNeedsTable.managerEmployeeId, employeeIds));
+  );
+  await skipIfMissing("branch_audits", () =>
+    db
+      .delete(branchAuditsTable)
+      .where(inArray(branchAuditsTable.managerEmployeeId, employeeIds)),
+  );
+  await skipIfMissing("branch_needs", () =>
+    db
+      .delete(branchNeedsTable)
+      .where(inArray(branchNeedsTable.managerEmployeeId, employeeIds)),
+  );
 
-  // Boshqalar shu mudirga bog‘langan bo‘lsa — bog‘lanishni uzamiz
-  await db
-    .update(employeesTable)
-    .set({ reportsToId: null })
-    .where(inArray(employeesTable.reportsToId, employeeIds));
+  await skipIfMissing("employees.reports_to", () =>
+    db
+      .update(employeesTable)
+      .set({ reportsToId: null })
+      .where(inArray(employeesTable.reportsToId, employeeIds)),
+  );
 
-  // employee assignee vazifalari
-  await db
-    .delete(tasksTable)
-    .where(
-      and(eq(tasksTable.assigneeKind, "employee"), inArray(tasksTable.assigneeId, employeeIds)),
-    );
+  await skipIfMissing("tasks.employee", () =>
+    db
+      .delete(tasksTable)
+      .where(
+        and(eq(tasksTable.assigneeKind, "employee"), inArray(tasksTable.assigneeId, employeeIds)),
+      ),
+  );
 }
 
 /**
@@ -212,14 +269,16 @@ export async function hardDeletePharmacyEmployee(
   ];
 
   if (userIds.length) {
-    const rem = await db
-      .select({ id: remindersTable.id })
-      .from(remindersTable)
-      .where(inArray(remindersTable.userId, userIds));
-    const remIds = rem.map((r) => r.id);
-    if (remIds.length) {
-      await db.delete(reminderEventsTable).where(inArray(reminderEventsTable.reminderId, remIds));
-    }
+    await skipIfMissing("reminder_events", async () => {
+      const rem = await db
+        .select({ id: remindersTable.id })
+        .from(remindersTable)
+        .where(inArray(remindersTable.userId, userIds));
+      const remIds = rem.map((r) => r.id);
+      if (remIds.length) {
+        await db.delete(reminderEventsTable).where(inArray(reminderEventsTable.reminderId, remIds));
+      }
+    });
   }
 
   await purgeEmployeeSideEffects(empIds);

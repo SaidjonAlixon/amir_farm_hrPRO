@@ -15,6 +15,12 @@ import { forceBroadcastDavomatToAll } from "../jobs/davomat-reminders";
 import { evaluateLiveness, matchFaceForAuthWithAi, type LivenessProof } from "../lib/face-match";
 import { maybeBackfillFacePhoto } from "./face";
 import { displayBranchName, gpsFromLocationField } from "../lib/geo-location";
+import {
+  getOfficeLocation,
+  DEFAULT_OFFICE_LAT as DAVOMAT_SITE_LAT,
+  DEFAULT_OFFICE_LNG as DAVOMAT_SITE_LNG,
+  DEFAULT_OFFICE_DMS as DAVOMAT_SITE_LABEL,
+} from "../lib/office-location";
 import { setSessionCookie } from "../lib/session";
 import { hoursForStaff, isPharmacyShiftStaff, shiftWindow } from "../lib/shift-hours";
 
@@ -25,10 +31,7 @@ const WORK_END = "18:00";
 const TZ_OFFSET = "+05:00"; // Asia/Tashkent
 /** Davomat Face ID faqat shu radiusda (metr) */
 export const DAVOMAT_GEOFENCE_METERS = 35;
-/** Belgilangan ish joyi: 41°13'09.3"N 69°16'22.9"E */
-export const DAVOMAT_SITE_LAT = 41 + 13 / 60 + 9.3 / 3600; // 41.21925
-export const DAVOMAT_SITE_LNG = 69 + 16 / 60 + 22.9 / 3600; // ≈ 69.273028
-export const DAVOMAT_SITE_LABEL = "41°13'09.3\"N 69°16'22.9\"E";
+export { DAVOMAT_SITE_LAT, DAVOMAT_SITE_LNG, DAVOMAT_SITE_LABEL };
 const FACE_DESCRIPTOR_LEN = 128;
 
 function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -260,6 +263,8 @@ function buildReport(
   records: Awaited<ReturnType<typeof loadRecords>>,
   from: string,
   to: string,
+  officeLat = DAVOMAT_SITE_LAT,
+  officeLng = DAVOMAT_SITE_LNG,
 ) {
   const dates = eachDateInclusive(from, to);
   const byEmpDate = new Map<string, (typeof records)[0]>();
@@ -296,8 +301,8 @@ function buildReport(
         const officeM = haversineMeters(
           rec.checkLatitude,
           rec.checkLongitude,
-          DAVOMAT_SITE_LAT,
-          DAVOMAT_SITE_LNG,
+          officeLat,
+          officeLng,
         );
         if (officeM > 1000) {
           farFromOffice.push({
@@ -495,12 +500,13 @@ router.get("/davomat", requireAuth, async (req: AuthRequest, res): Promise<void>
       search: q.search,
       employeeId: q.employeeId,
     });
+    const office = await getOfficeLocation();
     const records = await loadRecords(
       from,
       to,
       employees.map((e) => e.id),
     );
-    res.json(buildReport(employees, records, from, to));
+    res.json(buildReport(employees, records, from, to, office.latitude, office.longitude));
   } catch (err) {
     console.error("GET /davomat error:", err);
     res.status(503).json({ error: "Davomat yuklanmadi" });
@@ -512,7 +518,8 @@ async function ownEmployeeReport(empId: number) {
   const from = addDays(to, -89);
   const employees = await loadActiveEmployees({ employeeId: String(empId) });
   const records = await loadRecords(from, to, [empId]);
-  const report = buildReport(employees, records, from, to);
+  const office = await getOfficeLocation();
+  const report = buildReport(employees, records, from, to, office.latitude, office.longitude);
   return {
     from,
     to,
@@ -527,7 +534,8 @@ router.get("/davomat/today", requireAuth, async (req: AuthRequest, res): Promise
     const date = (req.query as { date?: string }).date || todayTashkent();
     const employees = await loadActiveEmployees({});
     const records = await loadRecords(date, date, employees.map((e) => e.id));
-    const report = buildReport(employees, records, date, date);
+    const office = await getOfficeLocation();
+    const report = buildReport(employees, records, date, date, office.latitude, office.longitude);
     const day = report.days[0];
     res.json({
       date,
@@ -700,12 +708,13 @@ async function resolveDavomatPoint(emp: WorkplaceEmp, userRole: string): Promise
   | { ok: false; status: number; body: Record<string, unknown> }
 > {
   if (!usesBranchDavomat(userRole, emp.orgRole)) {
+    const office = await getOfficeLocation();
     return {
       ok: true,
       point: {
-        latitude: DAVOMAT_SITE_LAT,
-        longitude: DAVOMAT_SITE_LNG,
-        label: `Asosiy ofis · ${DAVOMAT_SITE_LABEL}`,
+        latitude: office.latitude,
+        longitude: office.longitude,
+        label: office.label,
         kind: "office",
       },
     };
@@ -877,6 +886,7 @@ async function ensureEmployeeForUser(user: {
     departmentId = anyDept?.id ?? 1;
   }
 
+  const office = await getOfficeLocation();
   const orgRole = orgRoleFromUserRole(user.role);
   const branchStaff = usesBranchDavomat(user.role, orgRole);
   const [created] = await db
@@ -889,9 +899,9 @@ async function ensureEmployeeForUser(user: {
       userId: user.id,
       employmentStatus: "working",
       orgRole,
-      location: branchStaff ? null : DAVOMAT_SITE_LABEL,
-      latitude: branchStaff ? null : DAVOMAT_SITE_LAT,
-      longitude: branchStaff ? null : DAVOMAT_SITE_LNG,
+      location: branchStaff ? null : office.dms,
+      latitude: branchStaff ? null : office.latitude,
+      longitude: branchStaff ? null : office.longitude,
       shiftType: "one",
     })
     .returning({
@@ -1232,12 +1242,13 @@ router.get("/davomat/me/workplace", requireAuth, async (req: AuthRequest, res): 
     }
     const emp = await ensureEmployeeForUser(user);
     const resolved = await resolveDavomatPoint(emp, user.role);
+    const office = await getOfficeLocation();
     const point = resolved.ok
       ? resolved.point
       : {
-          latitude: DAVOMAT_SITE_LAT,
-          longitude: DAVOMAT_SITE_LNG,
-          label: DAVOMAT_SITE_LABEL,
+          latitude: office.latitude,
+          longitude: office.longitude,
+          label: office.label,
           kind: "office" as const,
         };
     const workDate = todayTashkent();
@@ -1313,11 +1324,12 @@ router.get("/davomat/me/workplace", requireAuth, async (req: AuthRequest, res): 
 
 /** Belgilangan davomat nuqtasi — login shart emas */
 router.get("/davomat/site", async (_req, res): Promise<void> => {
+  const office = await getOfficeLocation();
   res.json({
     allowedMeters: DAVOMAT_GEOFENCE_METERS,
-    label: DAVOMAT_SITE_LABEL,
-    latitude: DAVOMAT_SITE_LAT,
-    longitude: DAVOMAT_SITE_LNG,
+    label: office.label,
+    latitude: office.latitude,
+    longitude: office.longitude,
   });
 });
 
@@ -1368,10 +1380,11 @@ router.get("/davomat/me/status", requireAuth, async (req: AuthRequest, res): Pro
       unlinked: "Davomat Face ID orqali majburiy.",
     };
 
+    const office = await getOfficeLocation();
     res.json({
       workDate,
       allowedMeters: DAVOMAT_GEOFENCE_METERS,
-      siteLabel: DAVOMAT_SITE_LABEL,
+      siteLabel: office.label,
       fullName,
       nextAction,
       checkIn,
@@ -1645,7 +1658,8 @@ router.get("/davomat/export", requireAuth, async (req: AuthRequest, res): Promis
       to,
       employees.map((e) => e.id),
     );
-    const report = buildReport(employees, records, from, to);
+    const office = await getOfficeLocation();
+    const report = buildReport(employees, records, from, to, office.latitude, office.longitude);
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "AMIR FARM HR";

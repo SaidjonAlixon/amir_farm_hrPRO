@@ -157,18 +157,23 @@ function formatRemaining(ms: number) {
 }
 
 router.get("/reminders", requireAuth, async (req: AuthRequest, res): Promise<void> => {
-  const userId = req.userId!;
-  const rows = await db
-    .select()
-    .from(remindersTable)
-    .where(eq(remindersTable.userId, userId))
-    .orderBy(desc(remindersTable.dueAt));
+  try {
+    const userId = req.userId!;
+    const rows = await db
+      .select()
+      .from(remindersTable)
+      .where(eq(remindersTable.userId, userId))
+      .orderBy(desc(remindersTable.dueAt));
 
-  const synced = [];
-  for (const row of rows) {
-    synced.push(enrich(await syncReminderLifecycle(row, userId)));
+    const synced = [];
+    for (const row of rows) {
+      synced.push(enrich(await syncReminderLifecycle(row, userId)));
+    }
+    res.json(synced);
+  } catch (err) {
+    console.error("GET /reminders:", err);
+    res.json([]);
   }
-  res.json(synced);
 });
 
 router.get("/reminders/:id", requireAuth, async (req: AuthRequest, res): Promise<void> => {

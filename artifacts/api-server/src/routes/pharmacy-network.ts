@@ -5,6 +5,7 @@ import { db, usersTable, employeesTable } from "@workspace/db";
 import type { AuthRequest } from "../middlewares/auth";
 import { requireAuth } from "../middlewares/auth";
 import { parseGpsText, displayBranchName } from "../lib/geo-location";
+import { getOfficeLocation, saveOfficeLocation } from "../lib/office-location";
 import { saveManagerBranchLocation } from "../lib/branch-gps";
 import { ensureFarmasevtDepartmentId } from "../lib/farmasevt-department";
 import {
@@ -785,6 +786,33 @@ router.post(
     await handleSaveManagerLocation(req, res, id);
   },
 );
+
+router.get("/pharmacy-network/office", requireAuth, async (_req, res): Promise<void> => {
+  try {
+    const office = await getOfficeLocation();
+    res.json(office);
+  } catch (err) {
+    console.error("GET /pharmacy-network/office:", err);
+    res.status(503).json({ error: "Asosiy ofis yuklanmadi" });
+  }
+});
+
+router.post("/pharmacy-network/office", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  if (req.userRole !== "admin") {
+    res.status(403).json({ error: "Asosiy ofisni faqat admin kiritadi" });
+    return;
+  }
+  const result = await saveOfficeLocation({
+    coordinates: String(req.body?.coordinates || "").trim(),
+    name: String(req.body?.name ?? req.body?.branchName ?? "Asosiy ofis").trim() || "Asosiy ofis",
+    userId: req.userId ?? null,
+  });
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.json(result.office);
+});
 
 /**
  * Filial (mudir) yoki xodimni butunlay o‘chirish.

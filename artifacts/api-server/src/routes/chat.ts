@@ -267,6 +267,7 @@ router.get("/chats/users", requireAuth, async (req: AuthRequest, res): Promise<v
 
 /** Mening chatlarim */
 router.get("/chats", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  try {
   const me = req.userId!;
 
   const memberships = await db
@@ -329,6 +330,10 @@ router.get("/chats", requireAuth, async (req: AuthRequest, res): Promise<void> =
     });
 
   res.json({ chats: sorted });
+  } catch (err) {
+    console.error("GET /chats:", err);
+    res.json({ chats: [] });
+  }
 });
 
 /** Yangi chat: direct yoki group */

@@ -28,66 +28,81 @@ const PIPELINE_STAGES = [
 ];
 
 router.get("/dashboard/stats", requireAuth, async (req: AuthRequest, res): Promise<void> => {
-  const userId = req.userId ?? 1;
-  const scoped = isRecruiterScoped(req.userRole) && req.userId
-    ? eq(candidatesTable.recruiterId, req.userId)
-    : null;
-  const vacScoped = isRecruiterScoped(req.userRole) && req.userId
-    ? eq(vacanciesTable.recruiterId, req.userId)
-    : null;
+  try {
+    const userId = req.userId ?? 1;
+    const scoped = isRecruiterScoped(req.userRole) && req.userId
+      ? eq(candidatesTable.recruiterId, req.userId)
+      : null;
+    const vacScoped = isRecruiterScoped(req.userRole) && req.userId
+      ? eq(vacanciesTable.recruiterId, req.userId)
+      : null;
 
-  const [openReqs] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(requestsTable)
-    .where(sql`status NOT IN ('closed')`);
+    const [openReqs] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(requestsTable)
+      .where(sql`status NOT IN ('closed')`);
 
-  const [activeVacs] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(vacanciesTable)
-    .where(
-      vacScoped
-        ? and(eq(vacanciesTable.status, "published"), vacScoped)
-        : eq(vacanciesTable.status, "published"),
-    );
+    const [activeVacs] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(vacanciesTable)
+      .where(
+        vacScoped
+          ? and(eq(vacanciesTable.status, "published"), vacScoped)
+          : eq(vacanciesTable.status, "published"),
+      );
 
-  const [activeCands] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(candidatesTable)
-    .where(scoped ? and(eq(candidatesTable.status, "active"), scoped) : eq(candidatesTable.status, "active"));
+    const [activeCands] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(candidatesTable)
+      .where(scoped ? and(eq(candidatesTable.status, "active"), scoped) : eq(candidatesTable.status, "active"));
 
-  const [rejectedCands] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(candidatesTable)
-    .where(scoped ? and(eq(candidatesTable.status, "rejected"), scoped) : eq(candidatesTable.status, "rejected"));
+    const [rejectedCands] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(candidatesTable)
+      .where(scoped ? and(eq(candidatesTable.status, "rejected"), scoped) : eq(candidatesTable.status, "rejected"));
 
-  const [hiredMonth] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(candidatesTable)
-    .where(scoped ? and(eq(candidatesTable.status, "hired"), scoped) : eq(candidatesTable.status, "hired"));
+    const [hiredMonth] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(candidatesTable)
+      .where(scoped ? and(eq(candidatesTable.status, "hired"), scoped) : eq(candidatesTable.status, "hired"));
 
-  const [totalCands] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(candidatesTable)
-    .where(scoped ?? sql`true`);
+    const [totalCands] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(candidatesTable)
+      .where(scoped ?? sql`true`);
 
-  const [unread] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(notificationsTable)
-    .where(and(eq(notificationsTable.userId, userId), eq(notificationsTable.isRead, false)));
+    const [unread] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(notificationsTable)
+      .where(and(eq(notificationsTable.userId, userId), eq(notificationsTable.isRead, false)));
 
-  res.json({
-    openRequests: openReqs?.count ?? 0,
-    activeVacancies: activeVacs?.count ?? 0,
-    activeCandidates: activeCands?.count ?? 0,
-    rejectedCandidates: rejectedCands?.count ?? 0,
-    totalCandidates: totalCands?.count ?? 0,
-    hiredThisMonth: hiredMonth?.count ?? 0,
-    avgTimeToHire: 14.5,
-    unreadNotifications: unread?.count ?? 0,
-  });
+    res.json({
+      openRequests: openReqs?.count ?? 0,
+      activeVacancies: activeVacs?.count ?? 0,
+      activeCandidates: activeCands?.count ?? 0,
+      rejectedCandidates: rejectedCands?.count ?? 0,
+      totalCandidates: totalCands?.count ?? 0,
+      hiredThisMonth: hiredMonth?.count ?? 0,
+      avgTimeToHire: 14.5,
+      unreadNotifications: unread?.count ?? 0,
+    });
+  } catch (err) {
+    console.error("GET /dashboard/stats:", err);
+    res.json({
+      openRequests: 0,
+      activeVacancies: 0,
+      activeCandidates: 0,
+      rejectedCandidates: 0,
+      totalCandidates: 0,
+      hiredThisMonth: 0,
+      avgTimeToHire: 0,
+      unreadNotifications: 0,
+    });
+  }
 });
 
 router.get("/dashboard/pipeline-overview", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  try {
   const candidates = isRecruiterScoped(req.userRole) && req.userId
     ? await db
       .select({
@@ -138,9 +153,14 @@ router.get("/dashboard/pipeline-overview", requireAuth, async (req: AuthRequest,
   });
 
   res.json(counts);
+  } catch (err) {
+    console.error("GET /dashboard/pipeline-overview:", err);
+    res.json([]);
+  }
 });
 
 router.get("/dashboard/recent-activity", async (_req, res): Promise<void> => {
+  try {
   const STAGE_LABELS: Record<string, string> = {
     phone_interview: "Tanishuv",
     online_interview: "Onlayn suhbat",
@@ -227,9 +247,14 @@ router.get("/dashboard/recent-activity", async (_req, res): Promise<void> => {
     .slice(0, 12);
 
   res.json(activities);
+  } catch (err) {
+    console.error("GET /dashboard/recent-activity:", err);
+    res.json([]);
+  }
 });
 
 router.get("/dashboard/channel-stats", async (_req, res): Promise<void> => {
+  try {
   const channels = await db.select().from(channelsTable);
 
   const stats = channels.map((ch) => ({
@@ -241,9 +266,14 @@ router.get("/dashboard/channel-stats", async (_req, res): Promise<void> => {
   }));
 
   res.json(stats);
+  } catch (err) {
+    console.error("GET /dashboard/channel-stats:", err);
+    res.json([]);
+  }
 });
 
 router.get("/dashboard/recruiter-tasks", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  try {
   const role = req.userRole;
   const userId = req.userId;
 
@@ -355,6 +385,10 @@ router.get("/dashboard/recruiter-tasks", requireAuth, async (req: AuthRequest, r
   // Muddat vazifalari oldinda, keyin nomzod vazifalari
   const tasks = [...vacancyTasks, ...candidateTasks].slice(0, 15);
   res.json(tasks);
+  } catch (err) {
+    console.error("GET /dashboard/recruiter-tasks:", err);
+    res.json([]);
+  }
 });
 
 export default router;

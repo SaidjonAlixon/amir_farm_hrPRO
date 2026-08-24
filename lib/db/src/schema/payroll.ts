@@ -7,6 +7,9 @@ export const kpiSettingsTable = pgTable("kpi_settings", {
   tasksWeight: integer("tasks_weight").notNull().default(30),
   checklistWeight: integer("checklist_weight").notNull().default(30),
   workStartHm: text("work_start_hm").notNull().default("09:00"),
+  officeLatitude: doublePrecision("office_latitude"),
+  officeLongitude: doublePrecision("office_longitude"),
+  officeLabel: text("office_label"),
   updatedById: integer("updated_by_id"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

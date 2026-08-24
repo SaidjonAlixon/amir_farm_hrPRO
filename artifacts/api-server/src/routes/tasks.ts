@@ -125,19 +125,23 @@ async function enrichTask(row: typeof tasksTable.$inferSelect) {
 }
 
 router.get("/tasks", requireAuth, async (req: AuthRequest, res): Promise<void> => {
-  const { status, board } = req.query as Record<string, string>;
+  try {
+    const { status, board } = req.query as Record<string, string>;
 
-  let rows = await db.select().from(tasksTable).orderBy(desc(tasksTable.dueAt));
+    let rows = await db.select().from(tasksTable).orderBy(desc(tasksTable.dueAt));
 
-  // Faqat o'zi belgilagan yoki o'ziga biriktirilgan (admin — hammasi)
-  rows = rows.filter((r) => canViewTask(r, req.userId, req.userRole));
+    rows = rows.filter((r) => canViewTask(r, req.userId, req.userRole));
 
-  if (status) rows = rows.filter((r) => r.status === status);
-  if (board === "active") {
-    rows = rows.filter((r) => r.status !== "cancelled");
+    if (status) rows = rows.filter((r) => r.status === status);
+    if (board === "active") {
+      rows = rows.filter((r) => r.status !== "cancelled");
+    }
+
+    res.json(await Promise.all(rows.map(enrichTask)));
+  } catch (err) {
+    console.error("GET /tasks:", err);
+    res.json([]);
   }
-
-  res.json(await Promise.all(rows.map(enrichTask)));
 });
 
 router.post("/tasks", requireAuth, async (req: AuthRequest, res): Promise<void> => {

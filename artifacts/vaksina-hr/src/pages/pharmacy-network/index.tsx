@@ -56,6 +56,8 @@ import {
   gpsFromLocationField,
   gpsInputError,
   displayBranchName,
+  useOfficeLocation,
+  useSaveOfficeLocation,
   type PharmacyStaffRole,
   type PharmacyStaffResult,
 } from '../../lib/pharmacy-staff-api';
@@ -326,6 +328,8 @@ export default function PharmacyNetworkPage() {
   const createStaff = useCreatePharmacyStaff();
   const hardDeleteStaff = useHardDeletePharmacyEmployee();
   const saveBranchGps = useSaveManagerLocation();
+  const { data: office } = useOfficeLocation();
+  const saveOffice = useSaveOfficeLocation();
 
   const canAddMudir = user?.role === 'koordinator' || user?.role === 'admin' || isHrManager(user?.role);
   const canAddTeam = user?.role === 'mudir';
@@ -385,6 +389,7 @@ export default function PharmacyNetworkPage() {
 
   const canConfirmAlerts = user?.role === 'koordinator' || isHrManager(user?.role);
   const canSetBranchGps = user?.role === 'koordinator' || user?.role === 'admin' || isHrManager(user?.role);
+  const canEditOffice = user?.role === 'admin';
   const canSetNoManager =
     user?.role === 'koordinator' ||
     user?.role === 'admin' ||
@@ -428,6 +433,9 @@ export default function PharmacyNetworkPage() {
   const [branchNameDraft, setBranchNameDraft] = useState<Record<number, string>>({});
   const [gpsEditingId, setGpsEditingId] = useState<number | null>(null);
   const [savedGps, setSavedGps] = useState<Record<number, { lat: number; lng: number }>>({});
+  const [officeEditing, setOfficeEditing] = useState(false);
+  const [officeGpsDraft, setOfficeGpsDraft] = useState('');
+  const [officeNameDraft, setOfficeNameDraft] = useState('Asosiy ofis');
   const [credTarget, setCredTarget] = useState<{
     employeeId: number;
     fullName: string;
@@ -1037,6 +1045,112 @@ export default function PharmacyNetworkPage() {
           )}
         </div>
       </div>
+
+      {!isMudirOnly ? (
+        <div className="overflow-hidden rounded-xl border border-t-[3px] border-t-sky-600 border-sky-200 bg-gradient-to-br from-sky-50 to-white shadow-sm">
+          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-700">Tarmoq markazi</p>
+              {canEditOffice && officeEditing ? (
+                <div className="mt-2 space-y-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Nom</label>
+                    <Input
+                      value={officeNameDraft}
+                      onChange={(e) => setOfficeNameDraft(e.target.value)}
+                      placeholder="Asosiy ofis"
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Koordinata (GPS)</label>
+                    <textarea
+                      value={officeGpsDraft}
+                      onChange={(e) => setOfficeGpsDraft(e.target.value)}
+                      placeholder={`41°21'05.5"N 69°23'06.7"E`}
+                      rows={2}
+                      className="w-full resize-none rounded-md border border-input bg-background px-2.5 py-1.5 font-mono text-xs leading-snug"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-9"
+                      disabled={saveOffice.isPending}
+                      onClick={() => {
+                        const coordinates = officeGpsDraft.trim();
+                        const bad = gpsInputError(coordinates);
+                        if (bad) {
+                          toast({ title: 'Koordinata to‘liq emas', description: bad, variant: 'destructive' });
+                          return;
+                        }
+                        saveOffice.mutate(
+                          { coordinates, name: officeNameDraft.trim() || 'Asosiy ofis' },
+                          {
+                            onSuccess: () => {
+                              toast({ title: 'Asosiy ofis saqlandi' });
+                              setOfficeEditing(false);
+                            },
+                            onError: (err: Error) => {
+                              toast({ title: 'Saqlanmadi', description: err.message, variant: 'destructive' });
+                            },
+                          },
+                        );
+                      }}
+                    >
+                      Saqlash
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-9"
+                      onClick={() => setOfficeEditing(false)}
+                    >
+                      Bekor
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-1">
+                  <h2 className="text-lg font-bold text-slate-900">{office?.name || 'Asosiy ofis'}</h2>
+                  <a
+                    href={googleMapsUrl(
+                      office?.latitude ?? 41 + 21 / 60 + 5.5 / 3600,
+                      office?.longitude ?? 69 + 23 / 60 + 6.7 / 3600,
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-flex items-start gap-2 text-sm font-medium text-sky-800 hover:underline"
+                  >
+                    <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span className="font-mono text-xs sm:text-sm">
+                      {office?.dms || `41°21'05.5"N 69°23'06.7"E`}
+                    </span>
+                  </a>
+                </div>
+              )}
+            </div>
+            {canEditOffice && !officeEditing ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 shrink-0 gap-1.5"
+                onClick={() => {
+                  setOfficeNameDraft(office?.name || 'Asosiy ofis');
+                  setOfficeGpsDraft(office?.dms || `41°21'05.5"N 69°23'06.7"E`);
+                  setOfficeEditing(true);
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Lokatsiya
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {networkEmpty ? (
         <div className="rounded-2xl border border-dashed bg-white p-8 text-center">

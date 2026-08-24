@@ -289,6 +289,38 @@ export function useSaveManagerLocation() {
   });
 }
 
+export type OfficeLocation = {
+  name: string;
+  dms: string;
+  label: string;
+  latitude: number;
+  longitude: number;
+};
+
+export function useOfficeLocation() {
+  return useQuery({
+    queryKey: ["/api/pharmacy-network/office"],
+    queryFn: () => apiFetch<OfficeLocation>("/pharmacy-network/office"),
+  });
+}
+
+export function useSaveOfficeLocation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { coordinates: string; name?: string }) =>
+      apiFetch<OfficeLocation>("/pharmacy-network/office", {
+        method: "POST",
+        body: JSON.stringify({
+          coordinates: data.coordinates,
+          name: data.name || "Asosiy ofis",
+        }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/pharmacy-network/office"] });
+    },
+  });
+}
+
 export function useCreatePharmacyStaff() {
   const qc = useQueryClient();
   return useMutation({
