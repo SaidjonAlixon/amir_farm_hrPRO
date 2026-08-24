@@ -342,8 +342,59 @@ BEGIN
 END $$;
 `;
 
-/** Vercel cold start uchun — yetishmayotgan kritik ustunlar (tez) */
+/** Vercel cold start uchun — asosiy jadvallar + yetishmayotgan ustunlar */
 const CRITICAL_COLUMNS_SQL = `
+CREATE TABLE IF NOT EXISTS employees (
+  id SERIAL PRIMARY KEY,
+  full_name TEXT NOT NULL,
+  position TEXT NOT NULL,
+  department_id INTEGER NOT NULL,
+  mentor_id INTEGER,
+  hired_at TEXT NOT NULL,
+  candidate_id INTEGER,
+  org_role TEXT,
+  reports_to_id INTEGER,
+  location TEXT,
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
+  shift_type TEXT DEFAULT 'one',
+  assigned_branch_id INTEGER,
+  shift_label TEXT,
+  employment_status TEXT NOT NULL DEFAULT 'working',
+  user_id INTEGER,
+  created_by_id INTEGER,
+  photo_url TEXT,
+  fixed_salary INTEGER NOT NULL DEFAULT 0,
+  bonus_percent DOUBLE PRECISION NOT NULL DEFAULT 30,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS notifications (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'stage_change',
+  is_read BOOLEAN NOT NULL DEFAULT FALSE,
+  link_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS staffing_alerts (
+  id SERIAL PRIMARY KEY,
+  employee_id INTEGER NOT NULL,
+  manager_employee_id INTEGER,
+  branch_location TEXT,
+  shift_type TEXT,
+  shift_label TEXT,
+  employment_status TEXT NOT NULL,
+  workflow_status TEXT NOT NULL DEFAULT 'pending',
+  note TEXT,
+  created_by_id INTEGER,
+  confirmed_by_id INTEGER,
+  confirmed_at TIMESTAMPTZ,
+  request_id INTEGER,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 DO $$
 BEGIN
   IF EXISTS (
