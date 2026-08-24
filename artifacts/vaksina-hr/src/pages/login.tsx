@@ -60,13 +60,11 @@ export default function Login() {
 
   const demoAccounts = [
     { label: "Admin", login: "admin", pass: "admin123" },
-    { label: "Rekruter", login: "recruiter1", pass: "pass123" },
-    { label: "HR", login: "hr1", pass: "pass123" },
-    { label: "Trener", login: "trainer1", pass: "pass123" },
     { label: "Direktor", login: "director1", pass: "pass123" },
-    { label: "Bo'lim boshlig'i", login: "dept_head1", pass: "pass123" },
-    { label: "Mudir", login: "mudir1", pass: "pass123" },
     { label: "Koordinator", login: "koordinator1", pass: "pass123" },
+    { label: "HR Direktor", login: "hrdirektor1", pass: "pass123" },
+    { label: "HR Menejer", login: "hrmenejer1", pass: "pass123" },
+    { label: "Mudir", login: "mudir1", pass: "pass123" },
     { label: "Farmasevt", login: "farmasevt1", pass: "pass123" },
     { label: "Stajyor", login: "stajyor1", pass: "pass123" },
   ];

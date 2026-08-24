@@ -2,17 +2,17 @@ import pg from "../../lib/db/node_modules/pg/lib/index.js";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
-const departments = ["Rekruting", "HR", "Trening", "Farmatsiya", "Farmasevt", "Laboratoriya"];
+const departments = ["HR", "Farmatsiya", "Farmasevt"];
 
 const users = [
   ["System Admin", "admin", null, "admin", "admin123", "+998901000001"],
-  ["Aziza Recruiter", "recruiter", "Rekruting", "recruiter1", "pass123", "+998901000002"],
-  ["Dilnoza HR", "hr", "HR", "hr1", "pass123", "+998901000003"],
-  ["Jasur Trener", "trainer", "Trening", "trainer1", "pass123", "+998901000004"],
   ["Bahodir Direktor", "director", null, "director1", "pass123", "+998901000005"],
-  ["Madina Bo'lim boshlig'i", "department_head", "Farmatsiya", "dept_head1", "pass123", "+998901000006"],
-  ["Sardor Mudir", "mudir", "Farmasevt", "mudir1", "pass123", "+998901000007"],
   ["Nilufar Koordinator", "koordinator", "Farmatsiya", "koordinator1", "pass123", "+998901000008"],
+  ["HR Direktor", "hr_direktor", "HR", "hrdirektor1", "pass123", "+998901000013"],
+  ["HR Menejer", "hr_menejer", "HR", "hrmenejer1", "pass123", "+998901000014"],
+  ["Sardor Mudir", "mudir", "Farmasevt", "mudir1", "pass123", "+998901000007"],
+  ["Dilshod Farmasevt", "farmasevt", "Farmasevt", "farmasevt1", "pass123", "+998901000011"],
+  ["Malika Stajyor", "stajyor", "Farmasevt", "stajyor1", "pass123", "+998901000012"],
 ];
 
 const client = await pool.connect();

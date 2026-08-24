@@ -2,21 +2,20 @@ import { eq } from "drizzle-orm";
 import { db, departmentsTable, usersTable } from "@workspace/db";
 
 const departments = [
-  { name: "Rekruting" },
   { name: "HR" },
-  { name: "Trening" },
   { name: "Farmatsiya" },
   { name: "Farmasevt" },
-  { name: "Laboratoriya" },
 ];
 
 const users = [
   { fullName: "System Admin", role: "admin", login: "admin", password: "admin123", phone: "+998901000001" },
-  { fullName: "Aziza Recruiter", role: "recruiter", login: "recruiter1", password: "pass123", phone: "+998901000002", dept: "Rekruting" },
-  { fullName: "Dilnoza HR", role: "hr", login: "hr1", password: "pass123", phone: "+998901000003", dept: "HR" },
-  { fullName: "Jasur Trener", role: "trainer", login: "trainer1", password: "pass123", phone: "+998901000004", dept: "Trening" },
   { fullName: "Bahodir Direktor", role: "director", login: "director1", password: "pass123", phone: "+998901000005" },
-  { fullName: "Madina Bo'lim boshlig'i", role: "department_head", login: "dept_head1", password: "pass123", phone: "+998901000006", dept: "Farmatsiya" },
+  { fullName: "Nilufar Koordinator", role: "koordinator", login: "koordinator1", password: "pass123", phone: "+998901000008", dept: "Farmatsiya" },
+  { fullName: "HR Direktor", role: "hr_direktor", login: "hrdirektor1", password: "pass123", phone: "+998901000013", dept: "HR" },
+  { fullName: "HR Menejer", role: "hr_menejer", login: "hrmenejer1", password: "pass123", phone: "+998901000014", dept: "HR" },
+  { fullName: "Sardor Mudir", role: "mudir", login: "mudir1", password: "pass123", phone: "+998901000007", dept: "Farmasevt" },
+  { fullName: "Dilshod Farmasevt", role: "farmasevt", login: "farmasevt1", password: "pass123", phone: "+998901000011", dept: "Farmasevt" },
+  { fullName: "Malika Stajyor", role: "stajyor", login: "stajyor1", password: "pass123", phone: "+998901000012", dept: "Farmasevt" },
 ];
 
 async function main() {
