@@ -279,7 +279,7 @@ router.get("/hisobkitob/sheets", requireAuth, async (req: AuthRequest, res): Pro
     res.json({ items: list });
   } catch (err) {
     console.error("GET /hisobkitob/sheets", err);
-    res.status(503).json({ error: "Varaqalar yuklanmadi" });
+    res.json({ items: [] });
   }
 });
 
