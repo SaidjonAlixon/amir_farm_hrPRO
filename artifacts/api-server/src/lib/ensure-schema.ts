@@ -687,6 +687,17 @@ CREATE TABLE IF NOT EXISTS settlement_lines (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE TABLE IF NOT EXISTS job_roles (
+  id SERIAL PRIMARY KEY,
+  slug TEXT NOT NULL,
+  label TEXT NOT NULL,
+  is_system BOOLEAN NOT NULL DEFAULT FALSE,
+  hidden BOOLEAN NOT NULL DEFAULT FALSE,
+  created_by_id INTEGER,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS job_roles_slug_uidx ON job_roles (slug);
+ALTER TABLE job_roles ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;
 DO $$
 BEGIN
   IF EXISTS (
@@ -933,6 +944,17 @@ ALTER TABLE settlement_lines ADD COLUMN IF NOT EXISTS extra_bonus DOUBLE PRECISI
 ALTER TABLE settlement_lines ADD COLUMN IF NOT EXISTS fine_note TEXT;
 ALTER TABLE settlement_lines ALTER COLUMN percent SET DEFAULT 0;
 UPDATE settlement_lines SET percent = 0 WHERE ABS(percent - 0.006) < 0.0000001;
+CREATE TABLE IF NOT EXISTS job_roles (
+  id SERIAL PRIMARY KEY,
+  slug TEXT NOT NULL,
+  label TEXT NOT NULL,
+  is_system BOOLEAN NOT NULL DEFAULT FALSE,
+  hidden BOOLEAN NOT NULL DEFAULT FALSE,
+  created_by_id INTEGER,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS job_roles_slug_uidx ON job_roles (slug);
+ALTER TABLE job_roles ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;
     `);
   } catch (err) {
     logger.error({ err }, "Failed to ensure DB schema");

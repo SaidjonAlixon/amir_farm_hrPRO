@@ -8,8 +8,8 @@ import {
   getGetUsersQueryKey,
   type User,
 } from '@workspace/api-client-react';
-import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Copy, Check, Eye, EyeOff, Trash2, UserPlus, FileSpreadsheet, Loader2, Pencil, KeyRound } from 'lucide-react';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { Plus, Search, Copy, Check, Eye, EyeOff, Trash2, UserPlus, FileSpreadsheet, Loader2, Pencil, KeyRound, Briefcase, Shield } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -82,6 +82,147 @@ function statusClass(status?: string | null) {
   return 'bg-slate-100 text-slate-700';
 }
 
+type JobRoleItem = { value: string; label: string; custom?: boolean };
+
+async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, { credentials: 'include', ...init });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error || 'Xatolik');
+  }
+  return res.json() as Promise<T>;
+}
+
+function RolePicker({
+  value,
+  onChange,
+  canAdd,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  canAdd: boolean;
+}) {
+  const { toast } = useToast();
+  const [draft, setDraft] = useState('');
+  const rolesQuery = useQuery({
+    queryKey: ['/api/users/roles'],
+    queryFn: () => fetchJson<{ items: JobRoleItem[] }>('/api/users/roles'),
+  });
+  const addRole = useMutation({
+    mutationFn: (label: string) =>
+      fetchJson<JobRoleItem>('/api/users/roles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label }),
+      }),
+    onSuccess: (created) => {
+      void rolesQuery.refetch();
+      onChange(created.value);
+      setDraft('');
+      toast({ title: 'Lavozim qo‘shildi', description: created.label });
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Qo‘shilmadi', description: err.message, variant: 'destructive' });
+    },
+  });
+  const removeRole = useMutation({
+    mutationFn: (slug: string) =>
+      fetchJson<{ ok: true; slug: string }>(`/api/users/roles/${encodeURIComponent(slug)}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: async (_data, slug) => {
+      const next = await rolesQuery.refetch();
+      if (value === slug) {
+        const first = next.data?.items?.find((i) => i.value !== slug)?.value || 'admin';
+        onChange(first);
+      }
+      toast({ title: 'Lavozim o‘chirildi' });
+    },
+    onError: (err: Error) => {
+      toast({ title: 'O‘chirilmadi', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const items = rolesQuery.data?.items?.length
+    ? rolesQuery.data.items
+    : ROLES.map((r) => ({ value: r.value, label: r.label, custom: false }));
+
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white text-left shadow-sm">
+        <SelectValue placeholder="Lavozimni tanlang" />
+      </SelectTrigger>
+      <SelectContent position="popper" className="z-[100] max-h-80 overflow-hidden rounded-xl p-0">
+        <div className="max-h-56 overflow-y-auto py-1">
+          {items.map((r) => (
+            <div key={r.value} className="relative flex items-center pr-1">
+              <SelectItem value={r.value} className="mx-1 flex-1 rounded-lg pr-9">
+                {r.label}
+              </SelectItem>
+              {canAdd && r.value !== 'admin' ? (
+                <button
+                  type="button"
+                  title="O‘chirish"
+                  className="absolute right-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                  disabled={removeRole.isPending}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.confirm(`«${r.label}» lavozimini o‘chirasizmi?`)) {
+                      removeRole.mutate(r.value);
+                    }
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+        {canAdd ? (
+          <div
+            className="sticky bottom-0 space-y-1.5 border-t bg-slate-50 p-2"
+            onPointerDown={(e) => e.preventDefault()}
+          >
+            <p className="px-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              Yangi lavozim
+            </p>
+            <div className="flex gap-1.5">
+              <Input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder="Masalan: Buxgalter"
+                className="h-9 rounded-lg bg-white text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const label = draft.trim();
+                    if (label) addRole.mutate(label);
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 shrink-0 gap-1 rounded-lg"
+                disabled={addRole.isPending || draft.trim().length < 2}
+                onClick={() => addRole.mutate(draft.trim())}
+              >
+                {addRole.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                Qo‘shish
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </SelectContent>
+    </Select>
+  );
+}
+
 type CreatedCredentials = {
   fullName: string;
   role: string;
@@ -117,11 +258,20 @@ export default function AdminUsersPage() {
     role: roleFilter !== 'all' ? roleFilter : undefined,
   });
   const { data: departments } = useGetDepartments();
+  const { data: rolesCatalog } = useQuery({
+    queryKey: ['/api/users/roles'],
+    queryFn: () => fetchJson<{ items: JobRoleItem[] }>('/api/users/roles'),
+  });
   const createMutation = useCreateUser();
   const updateMutation = useUpdateUser();
   const deleteMutation = useDeleteUser();
 
   const isAdmin = me?.role === 'admin';
+  const roleItems = rolesCatalog?.items?.length
+    ? rolesCatalog.items
+    : ROLES.map((r) => ({ value: r.value, label: r.label }));
+  const labelFor = (role?: string | null) =>
+    roleItems.find((r) => r.value === role)?.label || userRoleLabel(role) || role || '';
 
   const sorted = useMemo(() => {
     return [...(users ?? [])].sort((a, b) => a.fullName.localeCompare(b.fullName, 'uz'));
@@ -398,61 +548,68 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Foydalanuvchilar</h1>
-          <p className="mt-1 text-muted-foreground">
-            Rol bo‘yicha login va parol avtomatik yaratiladi
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="gap-2"
-            disabled={exporting || !sorted.length}
-            onClick={() => void onExportExcel()}
-          >
-            {exporting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <FileSpreadsheet className="h-4 w-4 text-emerald-700" />
-            )}
-            Excel export
-          </Button>
-          <Button className="gap-2" onClick={() => setCreateOpen(true)}>
-            <UserPlus className="h-4 w-4" />
-            Yangi foydalanuvchi
-          </Button>
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-[#0b3a5c] via-[#124e73] to-[#1a6a94] p-5 text-white shadow-md sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium">
+              <Shield className="h-3.5 w-3.5" />
+              Admin
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Foydalanuvchilar</h1>
+            <p className="mt-1 max-w-xl text-sm text-white/80">
+              Lavozimni tanlang yoki joyida yangisini qo‘shing — login va parol avtomatik beriladi.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              className="gap-2 bg-white/95 text-slate-900 hover:bg-white"
+              disabled={exporting || !sorted.length}
+              onClick={() => void onExportExcel()}
+            >
+              {exporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileSpreadsheet className="h-4 w-4 text-emerald-700" />
+              )}
+              Excel export
+            </Button>
+            <Button className="gap-2 bg-emerald-500 text-white hover:bg-emerald-600" onClick={() => setCreateOpen(true)}>
+              <UserPlus className="h-4 w-4" />
+              Yangi foydalanuvchi
+            </Button>
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-xl border bg-white p-3 shadow-sm sm:flex-row">
+      <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Ism bo‘yicha qidirish..."
-            className="pl-9"
+            className="h-11 rounded-xl pl-9"
           />
         </div>
         <Select value={roleFilter} onValueChange={setRoleFilter}>
-          <SelectTrigger className="w-full sm:w-[200px]">
-            <SelectValue placeholder="Rol" />
+          <SelectTrigger className="h-11 w-full rounded-xl sm:w-[220px]">
+            <SelectValue placeholder="Lavozim" />
           </SelectTrigger>
           <SelectContent position="popper">
-            <SelectItem value="all">Barcha rollar</SelectItem>
-            {ROLES.map((r) => (
+            <SelectItem value="all">Barcha lavozimlar</SelectItem>
+            {roleItems.map((r) => (
               <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">
+      <Card className="overflow-hidden rounded-2xl border-slate-200 shadow-sm">
+        <CardHeader className="border-b bg-slate-50/80 pb-3">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
+            <Briefcase className="h-4 w-4 text-[#0b3a5c]" />
             Ro‘yxat {sorted.length ? `(${sorted.length})` : ''}
           </CardTitle>
         </CardHeader>
@@ -490,7 +647,9 @@ export default function AdminUsersPage() {
                         {u.phone && <div className="text-xs text-muted-foreground">{u.phone}</div>}
                       </td>
                       <td className="px-4 py-3">
-                        <Badge variant="secondary">{userRoleLabel(u.role) || u.role}</Badge>
+                        <Badge variant="secondary" className="rounded-full font-medium">
+                          {labelFor(u.role)}
+                        </Badge>
                       </td>
                       <td className="px-4 py-3 font-mono text-xs">{u.login}</td>
                       <td className="px-4 py-3 text-muted-foreground">{u.departmentName || '—'}</td>
@@ -563,14 +722,17 @@ export default function AdminUsersPage() {
 
       {/* Create dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
-          <DialogHeader className="border-b px-5 py-4 text-left">
-            <DialogTitle>Yangi foydalanuvchi</DialogTitle>
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-lg">
+          <DialogHeader className="border-b bg-gradient-to-r from-slate-50 to-sky-50 px-5 py-4 text-left">
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-[#0b3a5c]" />
+              Yangi foydalanuvchi
+            </DialogTitle>
             <DialogDescription>
-              Ism-familiya va rolni tanlang — login va parol avtomatik beriladi.
+              Ism-familiya va lavozimni tanlang — login va parol avtomatik beriladi.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={onCreate} className="flex max-h-[min(70vh,32rem)] flex-col">
+          <form onSubmit={onCreate} className="flex max-h-[min(70vh,34rem)] flex-col">
             <div className="space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
               <div className="space-y-2">
                 <Label htmlFor="create-fullName">Ism familiya *</Label>
@@ -579,21 +741,13 @@ export default function AdminUsersPage() {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="Masalan: Aziza Karimova"
+                  className="h-11 rounded-xl"
                   autoFocus
                 />
               </div>
               <div className="space-y-2">
-                <Label>Rol *</Label>
-                <Select value={role} onValueChange={setRole}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Rolni tanlang" />
-                  </SelectTrigger>
-                  <SelectContent position="popper" className="z-[100]">
-                    {ROLES.map((r) => (
-                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Lavozim *</Label>
+                <RolePicker value={role} onChange={setRole} canAdd={isAdmin} />
               </div>
               <div className="space-y-2">
                 <Label>Telefon (ixtiyoriy)</Label>
@@ -635,9 +789,12 @@ export default function AdminUsersPage() {
           if (!open) resetForm();
         }}
       >
-        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
-          <DialogHeader className="border-b px-5 py-4 text-left">
-            <DialogTitle>Foydalanuvchini tahrirlash</DialogTitle>
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-lg">
+          <DialogHeader className="border-b bg-gradient-to-r from-slate-50 to-sky-50 px-5 py-4 text-left">
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-[#0b3a5c]" />
+              Foydalanuvchini tahrirlash
+            </DialogTitle>
             <DialogDescription>
               {editing?.login ? (
                 <>
@@ -657,21 +814,13 @@ export default function AdminUsersPage() {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="Masalan: Aziza Karimova"
+                  className="h-11 rounded-xl"
                   autoFocus
                 />
               </div>
               <div className="space-y-2">
-                <Label>Rol *</Label>
-                <Select value={role} onValueChange={setRole}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Rolni tanlang" />
-                  </SelectTrigger>
-                  <SelectContent position="popper" className="z-[100]">
-                    {ROLES.map((r) => (
-                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Lavozim *</Label>
+                <RolePicker value={role} onChange={setRole} canAdd={isAdmin} />
               </div>
               <div className="space-y-2">
                 <Label>Telefon (ixtiyoriy)</Label>
@@ -725,7 +874,7 @@ export default function AdminUsersPage() {
           <DialogHeader>
             <DialogTitle>Yangi login va parol</DialogTitle>
             <DialogDescription>
-              {created?.fullName} ({userRoleLabel(created?.role || '') || created?.role}) uchun
+              {created?.fullName} ({labelFor(created?.role) || created?.role}) uchun
               kirish ma’lumotlari. Parol faqat hozir ko‘rsatiladi — foydalanuvchiga bering.
             </DialogDescription>
           </DialogHeader>

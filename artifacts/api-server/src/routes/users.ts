@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { eq, and, ilike, asc } from "drizzle-orm";
+import { eq, and, ilike, asc, sql } from "drizzle-orm";
 import ExcelJS from "exceljs";
-import { db, usersTable, departmentsTable } from "@workspace/db";
+import { db, usersTable, departmentsTable, jobRolesTable } from "@workspace/db";
 import type { AuthRequest } from "../middlewares/auth";
 import { requireAuth } from "../middlewares/auth";
 import {
@@ -66,6 +66,38 @@ const STATUS_UZ: Record<string, string> = {
   on_leave: "Tatilda",
   blocked: "Bo‘sh",
 };
+
+async function customRoleRows() {
+  try {
+    return await db
+      .select({
+        slug: jobRolesTable.slug,
+        label: jobRolesTable.label,
+        hidden: jobRolesTable.hidden,
+        isSystem: jobRolesTable.isSystem,
+      })
+      .from(jobRolesTable)
+      .orderBy(asc(jobRolesTable.label));
+  } catch {
+    return [];
+  }
+}
+
+async function isAllowedRole(role: string): Promise<boolean> {
+  if ((ALLOWED_ROLES as readonly string[]).includes(role)) return true;
+  const extras = await customRoleRows();
+  return extras.some((r) => r.slug === role);
+}
+
+function systemRoleItems() {
+  return (ALLOWED_ROLES as readonly string[])
+    .filter((v) => v !== "hr")
+    .map((value) => ({
+      value,
+      label: ROLE_LABEL_UZ[value] || value,
+      custom: false,
+    }));
+}
 
 function requireAdmin(req: AuthRequest, res: import("express").Response): boolean {
   if (req.userRole !== "admin") {
@@ -170,6 +202,131 @@ router.get("/users", async (req, res): Promise<void> => {
   res.json(rows);
 });
 
+router.get("/users/roles", requireAuth, async (_req, res): Promise<void> => {
+  const extras = await customRoleRows();
+  const hidden = new Set(extras.filter((r) => r.hidden).map((r) => r.slug));
+  const seen = new Set(systemRoleItems().map((r) => r.value));
+  const items = [
+    ...systemRoleItems().filter((r) => !hidden.has(r.value)),
+    ...extras
+      .filter((r) => !r.hidden && !seen.has(r.slug))
+      .map((r) => ({ value: r.slug, label: r.label, custom: true })),
+  ];
+  res.json({ items });
+});
+
+router.post("/users/roles", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  if (!requireAdmin(req, res)) return;
+  const label = String(req.body?.label || "").trim().replace(/\s+/g, " ");
+  if (!label || label.length < 2) {
+    res.status(400).json({ error: "Lavozim nomini yozing" });
+    return;
+  }
+  if (label.length > 60) {
+    res.status(400).json({ error: "Lavozim nomi juda uzun" });
+    return;
+  }
+  const systemHit = systemRoleItems().find(
+    (r) => r.label.toLowerCase() === label.toLowerCase() || r.value === latinSlug(label),
+  );
+  if (systemHit) {
+    res.status(409).json({ error: `«${systemHit.label}» tizimda allaqachon bor` });
+    return;
+  }
+  const extras = await customRoleRows();
+  if (extras.some((r) => r.label.toLowerCase() === label.toLowerCase())) {
+    res.status(409).json({ error: "Bu lavozim allaqachon qo‘shilgan" });
+    return;
+  }
+  let slug = latinSlug(label);
+  if (!slug || (ALLOWED_ROLES as readonly string[]).includes(slug)) {
+    slug = `lavozim_${slug || "yangi"}`;
+  }
+  if (extras.some((r) => r.slug === slug) || (ALLOWED_ROLES as readonly string[]).includes(slug)) {
+    slug = `${slug}${Date.now().toString(36).slice(-3)}`;
+  }
+  try {
+    const [created] = await db
+      .insert(jobRolesTable)
+      .values({
+        slug,
+        label,
+        isSystem: false,
+        createdById: req.userId ?? null,
+      })
+      .returning();
+    res.status(201).json({
+      value: created.slug,
+      label: created.label,
+      custom: true,
+    });
+  } catch (err) {
+    console.error("POST /users/roles", err);
+    res.status(503).json({ error: "Lavozim saqlanmadi" });
+  }
+});
+
+router.delete("/users/roles/:slug", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  if (!requireAdmin(req, res)) return;
+  const slug = String(Array.isArray(req.params.slug) ? req.params.slug[0] : req.params.slug || "").trim();
+  if (!slug) {
+    res.status(400).json({ error: "Lavozim tanlanmadi" });
+    return;
+  }
+  if (slug === "admin") {
+    res.status(400).json({ error: "Admin lavozimini o‘chirib bo‘lmaydi" });
+    return;
+  }
+
+  const [used] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(usersTable)
+    .where(eq(usersTable.role, slug));
+  const inUse = Number(used?.n ?? 0);
+  const isSystem = (ALLOWED_ROLES as readonly string[]).includes(slug);
+  const extras = await customRoleRows();
+  const existing = extras.find((r) => r.slug === slug);
+
+  if (!isSystem && !existing) {
+    res.status(404).json({ error: "Lavozim topilmadi" });
+    return;
+  }
+  if (!isSystem && inUse > 0) {
+    res.status(409).json({
+      error: `${inUse} ta foydalanuvchi shu lavozimda — avval boshqa lavozimga o‘tkazing`,
+    });
+    return;
+  }
+
+  try {
+    if (!isSystem && existing && inUse === 0) {
+      await db.delete(jobRolesTable).where(eq(jobRolesTable.slug, slug));
+      res.json({ ok: true, slug, removed: true });
+      return;
+    }
+
+    const label = ROLE_LABEL_UZ[slug] || existing?.label || slug;
+    if (existing) {
+      await db
+        .update(jobRolesTable)
+        .set({ hidden: true })
+        .where(eq(jobRolesTable.slug, slug));
+    } else {
+      await db.insert(jobRolesTable).values({
+        slug,
+        label,
+        isSystem: true,
+        hidden: true,
+        createdById: req.userId ?? null,
+      });
+    }
+    res.json({ ok: true, slug, hidden: true });
+  } catch (err) {
+    console.error("DELETE /users/roles:", err);
+    res.status(503).json({ error: "O‘chirilmadi" });
+  }
+});
+
 /** Admin — barcha foydalanuvchilar + login/parol Excel */
 router.get("/users/export", requireAuth, async (req: AuthRequest, res): Promise<void> => {
   if (req.userRole !== "admin") {
@@ -192,6 +349,9 @@ router.get("/users/export", requireAuth, async (req: AuthRequest, res): Promise<
     .from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
     .orderBy(asc(usersTable.fullName));
+
+  const extraRoles = await customRoleRows();
+  const extraLabel = Object.fromEntries(extraRoles.map((r) => [r.slug, r.label]));
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "AMIR FARM HR";
@@ -261,7 +421,7 @@ router.get("/users/export", requireAuth, async (req: AuthRequest, res): Promise<
     const row = sheet.addRow({
       n: idx + 1,
       fullName: u.fullName,
-      role: ROLE_LABEL_UZ[u.role] || u.role,
+      role: ROLE_LABEL_UZ[u.role] || extraLabel[u.role] || u.role,
       login: u.login,
       password: u.password,
       phone: u.phone || "—",
@@ -346,7 +506,7 @@ router.post("/users", requireAuth, async (req: AuthRequest, res): Promise<void> 
     res.status(400).json({ error: "Ism-familiya va rol majburiy" });
     return;
   }
-  if (!ALLOWED_ROLES.includes(role)) {
+  if (!(await isAllowedRole(role))) {
     res.status(400).json({ error: "Noto'g'ri rol" });
     return;
   }
@@ -487,7 +647,7 @@ router.patch("/users/:id", requireAuth, async (req: AuthRequest, res): Promise<v
   for (const key of allowed) {
     if (req.body[key] !== undefined) updates[key] = req.body[key];
   }
-  if (updates.role && !ALLOWED_ROLES.includes(updates.role as typeof ALLOWED_ROLES[number])) {
+  if (updates.role && !(await isAllowedRole(String(updates.role)))) {
     res.status(400).json({ error: "Noto'g'ri rol" });
     return;
   }
