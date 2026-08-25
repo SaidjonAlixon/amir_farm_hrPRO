@@ -148,78 +148,77 @@ function RolePicker({
     : ROLES.map((r) => ({ value: r.value, label: r.label, custom: false }));
 
   return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white text-left shadow-sm">
-        <SelectValue placeholder="Lavozimni tanlang" />
-      </SelectTrigger>
-      <SelectContent position="popper" className="z-[100] max-h-80 overflow-hidden rounded-xl p-0">
-        <div className="max-h-56 overflow-y-auto py-1">
-          {items.map((r) => (
-            <div key={r.value} className="relative flex items-center pr-1">
-              <SelectItem value={r.value} className="mx-1 flex-1 rounded-lg pr-9">
-                {r.label}
-              </SelectItem>
-              {canAdd && r.value !== 'admin' ? (
-                <button
-                  type="button"
-                  title="O‘chirish"
-                  className="absolute right-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                  disabled={removeRole.isPending}
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (window.confirm(`«${r.label}» lavozimini o‘chirasizmi?`)) {
-                      removeRole.mutate(r.value);
-                    }
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              ) : null}
-            </div>
-          ))}
-        </div>
-        {canAdd ? (
-          <div
-            className="sticky bottom-0 space-y-1.5 border-t bg-slate-50 p-2"
-            onPointerDown={(e) => e.preventDefault()}
-          >
-            <p className="px-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-              Yangi lavozim
-            </p>
-            <div className="flex gap-1.5">
-              <Input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="Masalan: Buxgalter"
-                className="h-9 rounded-lg bg-white text-sm"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    const label = draft.trim();
-                    if (label) addRole.mutate(label);
-                  }
-                }}
-              />
-              <Button
-                type="button"
-                size="sm"
-                className="h-9 shrink-0 gap-1 rounded-lg"
-                disabled={addRole.isPending || draft.trim().length < 2}
-                onClick={() => addRole.mutate(draft.trim())}
-              >
-                {addRole.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                Qo‘shish
-              </Button>
-            </div>
+    <div className="space-y-2">
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white text-left shadow-sm">
+          <SelectValue placeholder="Lavozimni tanlang" />
+        </SelectTrigger>
+        <SelectContent position="popper" className="z-[100] max-h-80 overflow-hidden rounded-xl p-0">
+          <div className="max-h-64 overflow-y-auto py-1">
+            {items.map((r) => (
+              <div key={r.value} className="relative flex items-center pr-1">
+                <SelectItem value={r.value} className="mx-1 flex-1 rounded-lg pr-9">
+                  {r.label}
+                </SelectItem>
+                {canAdd && r.value !== 'admin' ? (
+                  <button
+                    type="button"
+                    title="O‘chirish"
+                    className="absolute right-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                    disabled={removeRole.isPending}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (window.confirm(`«${r.label}» lavozimini o‘chirasizmi?`)) {
+                        removeRole.mutate(r.value);
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </div>
+            ))}
           </div>
-        ) : null}
-      </SelectContent>
-    </Select>
+        </SelectContent>
+      </Select>
+      {canAdd ? (
+        <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+            Yangi lavozim
+          </p>
+          <div className="flex gap-1.5">
+            <Input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Masalan: Buxgalter"
+              className="h-9 rounded-lg bg-white text-sm"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const label = draft.trim();
+                  if (label) addRole.mutate(label);
+                }
+              }}
+            />
+            <Button
+              type="button"
+              size="sm"
+              className="h-9 shrink-0 gap-1 rounded-lg"
+              disabled={addRole.isPending || draft.trim().length < 2}
+              onClick={() => addRole.mutate(draft.trim())}
+            >
+              {addRole.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              Qo‘shish
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
