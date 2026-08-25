@@ -66,7 +66,6 @@ export default function Login() {
     { label: "HR Menejer", login: "hrmenejer1", pass: "pass123" },
     { label: "Mudir", login: "mudir1", pass: "pass123" },
     { label: "Farmasevt", login: "farmasevt1", pass: "pass123" },
-    { label: "Stajyor", login: "stajyor1", pass: "pass123" },
   ];
 
   return (

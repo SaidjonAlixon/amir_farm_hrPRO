@@ -334,10 +334,6 @@ BEGIN
         AND u.role IS DISTINCT FROM 'stajyor';
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM users WHERE login = 'stajyor1') THEN
-      INSERT INTO users (full_name, role, login, password, status)
-      VALUES ('Demo Stajyor', 'stajyor', 'stajyor1', 'pass123', 'active');
-    END IF;
   END IF;
 END $$;
 `;
@@ -813,10 +809,6 @@ BEGIN
         AND u.role IS DISTINCT FROM 'stajyor';
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM users WHERE login = 'stajyor1') THEN
-      INSERT INTO users (full_name, role, login, password, status)
-      VALUES ('Demo Stajyor', 'stajyor', 'stajyor1', 'pass123', 'active');
-    END IF;
   END IF;
 END $$;
 `;

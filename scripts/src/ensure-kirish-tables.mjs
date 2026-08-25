@@ -50,18 +50,5 @@ CREATE TABLE IF NOT EXISTS kirish_progress (
 CREATE UNIQUE INDEX IF NOT EXISTS kirish_progress_user_uidx ON kirish_progress (user_id);
 `);
 
-const existing = await client.query(
-  `SELECT id FROM users WHERE login = 'stajyor1' LIMIT 1`,
-);
-if (!existing.rows.length) {
-  await client.query(
-    `INSERT INTO users (full_name, role, login, password, status)
-     VALUES ('Demo Stajyor', 'stajyor', 'stajyor1', 'pass123', 'active')`,
-  );
-  console.log("seeded stajyor1 / pass123");
-} else {
-  console.log("stajyor1 already exists");
-}
-
 console.log("kirish tables ok");
 await client.end();

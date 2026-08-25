@@ -46,10 +46,5 @@ export async function syncMoliyaDepartmentAssignments(departmentId?: number): Pr
       AND u.role = 'moliya'
       AND e.department_id IS DISTINCT FROM ${moliyaId}
   `);
-  await db.execute(sql`
-    INSERT INTO users (full_name, role, login, password, status, department_id)
-    SELECT 'Demo Moliyachi', 'moliya', 'moliyachi1', 'pass123', 'active', ${moliyaId}
-    WHERE NOT EXISTS (SELECT 1 FROM users WHERE login = 'moliyachi1')
-  `);
   return moliyaId;
 }
