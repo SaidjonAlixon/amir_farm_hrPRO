@@ -312,10 +312,14 @@ export type WorkplaceInfo = {
     nextAction: "in" | "out" | "done";
   };
   shift?: {
-    type: "one" | "two";
+    type: string;
     label: string;
+    hint?: string;
     start: string;
     end: string;
+    overnight?: boolean;
+    skipGeofence?: boolean;
+    hoursNote?: string;
     warnHm: string;
     warnText: string;
   } | null;

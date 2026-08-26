@@ -683,21 +683,31 @@ export default function DavomatFacePage() {
     return haversineMeters(gps.lat, gps.lng, site.latitude, site.longitude);
   }, [gps, site.latitude, site.longitude]);
 
-  const allowedMeters = workplace?.allowedMeters || site.allowedMeters || DAVOMAT_GEOFENCE_METERS;
-  const remain = distance != null ? Math.max(0, distance - allowedMeters) : null;
+  const skipGeofence = Boolean(workplace?.shift?.skipGeofence);
+  const allowedMeters = skipGeofence
+    ? Number.POSITIVE_INFINITY
+    : workplace?.allowedMeters || site.allowedMeters || DAVOMAT_GEOFENCE_METERS;
+  const remain = skipGeofence
+    ? 0
+    : distance != null
+      ? Math.max(0, distance - allowedMeters)
+      : null;
   /** Filial GPS yo‘q bo‘lsa ofis nuqtasiga tushib «Hududdasiz» deb yolg‘on yashil ko‘rsatilmasin */
-  const workplaceGpsMissing = workplace?.employee.hasGps === false;
-  const inside =
-    !workplaceGpsMissing && distance != null ? distance <= allowedMeters : false;
+  const workplaceGpsMissing = !skipGeofence && workplace?.employee.hasGps === false;
+  const inside = skipGeofence
+    ? true
+    : !workplaceGpsMissing && distance != null
+      ? distance <= allowedMeters
+      : false;
 
   /**
    * Face ID skani login talab qilmaydi (yuz → profil).
    * faceRegistered === true kutish — login yo‘q / status 401 bo‘lsa tugma abadiy yopiq qolardi.
+   * Masofadan / erkin grafik: filial GPS majburiy emas.
    */
   const canOpenFace =
     faceRegistered !== false &&
-    Boolean(gps) &&
-    !gpsError &&
+    (skipGeofence || (Boolean(gps) && !gpsError)) &&
     isFaceIdSupported() &&
     inside;
 
@@ -709,12 +719,12 @@ export default function DavomatFacePage() {
   const guideStep = useMemo((): GuideStep => {
     if (done) return "done";
     if (faceRegistered === false) return "enroll";
-    if (!gps || gpsError) return "permission";
-    if (!inside) return "zone";
+    if (!skipGeofence && (!gps || gpsError)) return "permission";
+    if (!skipGeofence && !inside) return "zone";
     if (!verified) return "face";
     if (!hasIn) return "keldim";
     return "ketdim";
-  }, [done, faceRegistered, gps, gpsError, inside, verified, hasIn]);
+  }, [done, faceRegistered, gps, gpsError, inside, verified, hasIn, skipGeofence]);
 
   /** Mobil: doim aktiv qadamni ko‘rsat; desktopda ham panel ochiq */
   const showGuide = guideStep !== "done";
@@ -736,16 +746,24 @@ export default function DavomatFacePage() {
       ? "Bugun yopilgan"
       : hasIn
         ? STATUS_UZ[workplace?.today.status || "present"] || "Ishda"
-        : todayStatus === "inside"
-          ? "Hududda"
-          : todayStatus === "outside"
-            ? "Hududdan tashqarida"
-            : todayStatus === "no_gps"
-              ? "Lokatsiya yo‘q"
-              : "GPS kutilmoqda";
+        : skipGeofence
+          ? workplace?.shift?.label
+            ? `${workplace.shift.label} · GPS shart emas`
+            : "GPS shart emas"
+          : todayStatus === "inside"
+            ? "Hududda"
+            : todayStatus === "outside"
+              ? "Hududdan tashqarida"
+              : todayStatus === "no_gps"
+                ? "Lokatsiya yo‘q"
+                : "GPS kutilmoqda";
 
   const faceLockedReason = useMemo(() => {
     if (faceRegistered === false) return "Avval yuzni ro‘yxatdan o‘tkazing";
+    if (skipGeofence) {
+      if (!isFaceIdSupported()) return "Face ID bu brauzerda ishlamaydi (HTTPS/localhost kerak)";
+      return null;
+    }
     if (gpsError) return gpsError;
     if (!gps) return "1-qadam: «Ruxsat berish» ni bosing";
     if (!isFaceIdSupported()) return "Face ID bu brauzerda ishlamaydi (HTTPS/localhost kerak)";
@@ -759,7 +777,16 @@ export default function DavomatFacePage() {
       return `Yashil hududga kirmadingiz (${formatDistance(distance)}). Kelmagan deb belgilanasiz. ${formatApproach(remain)}.`;
     }
     return null;
-  }, [faceRegistered, gps, gpsError, remain, distance, workplaceGpsMissing, workplace?.gpsError]);
+  }, [
+    faceRegistered,
+    gps,
+    gpsError,
+    remain,
+    distance,
+    workplaceGpsMissing,
+    workplace?.gpsError,
+    skipGeofence,
+  ]);
 
   useEffect(() => {
     if (!isTgMiniApp || tgBootRef.current) return;
@@ -777,8 +804,11 @@ export default function DavomatFacePage() {
   }, [isTgMiniApp, canOpenFace, done, verified, faceRegistered]);
 
   const geoPayload = () => {
-    if (!gps) throw new Error("GPS yo‘q");
-    return { latitude: gps.lat, longitude: gps.lng, accuracy: gps.accuracy };
+    if (gps) return { latitude: gps.lat, longitude: gps.lng, accuracy: gps.accuracy };
+    if (skipGeofence && site.latitude != null && site.longitude != null) {
+      return { latitude: site.latitude, longitude: site.longitude, accuracy: 0 };
+    }
+    throw new Error("GPS yo‘q");
   };
 
   const saveFaceImage = (snap?: string) => {
@@ -808,8 +838,8 @@ export default function DavomatFacePage() {
     snapshot?: string,
     liveness?: { blinked?: boolean; poses?: string[]; motion?: number; score?: number },
   ) => {
-    if (!gps) throw new Error("GPS yo‘q");
-    if (!inside) {
+    if (!skipGeofence && !gps) throw new Error("GPS yo‘q");
+    if (!skipGeofence && !inside) {
       throw new Error(`Hududdan tashqarida (${formatDistance(distance)}). Yana ${formatDistance(remain)} yaqinlashing.`);
     }
     try {
@@ -884,7 +914,8 @@ export default function DavomatFacePage() {
   };
 
   const punch = async (action: "in" | "out") => {
-    if (!verified || !gps) return;
+    if (!verified) return;
+    if (!skipGeofence && !gps) return;
     if (punchLockRef.current || busy) return;
     punchLockRef.current = true;
     setBusy(true);
@@ -1009,10 +1040,11 @@ export default function DavomatFacePage() {
       ? "ring-4 ring-rose-400/80"
       : "ring-4 ring-white/40";
 
-  const locationReady = Boolean(gps) && inside && !gpsError && faceRegistered !== false;
+  const locationReady =
+    (skipGeofence || (Boolean(gps) && !gpsError && inside)) && faceRegistered !== false;
   const showFaceStep =
     faceRegistered !== false &&
-    (locationReady || Boolean(verified) || Boolean(gps) || (hasIn && !done));
+    (locationReady || Boolean(verified) || Boolean(gps) || skipGeofence || (hasIn && !done));
   const showPunchStep = Boolean(verified) && !done && !dayComplete;
   const canPunchOut = hasIn && !done;
 
@@ -1084,6 +1116,13 @@ export default function DavomatFacePage() {
               <div className="min-w-0 flex-1">
                 <h1 className="truncate text-xl font-semibold leading-tight">{displayName}</h1>
                 <p className="mt-0.5 truncate text-sm text-sky-100/90">{position}</p>
+                {workplace?.shift ? (
+                  <p className="mt-1 truncate text-xs font-medium text-emerald-200/95">
+                    {workplace.shift.hoursNote ||
+                      `${workplace.shift.label}: ${workplace.shift.start}–${workplace.shift.end}`}
+                    {workplace.shift.hint ? ` · ${workplace.shift.hint}` : ""}
+                  </p>
+                ) : null}
                 {department ? <p className="truncate text-xs text-sky-200/80">{department}</p> : null}
                 <div className="mt-2">
                   <span
@@ -1205,10 +1244,16 @@ export default function DavomatFacePage() {
             <div
               className={cn(
                 "flex h-16 w-16 flex-col items-center justify-center rounded-2xl text-center",
-                inside ? "bg-emerald-50 text-emerald-800" : gps ? "bg-rose-50 text-rose-800" : "bg-slate-100 text-slate-500",
+                inside
+                  ? "bg-emerald-50 text-emerald-800"
+                  : gps
+                    ? "bg-rose-50 text-rose-800"
+                    : "bg-slate-100 text-slate-500",
               )}
             >
-              {gps && distance != null ? (
+              {skipGeofence ? (
+                <CheckCircle2 className="h-6 w-6" />
+              ) : gps && distance != null ? (
                 <>
                   <span className="text-lg font-semibold tabular-nums leading-none">
                     {formatDistanceParts(distance).value}
@@ -1220,7 +1265,12 @@ export default function DavomatFacePage() {
               )}
             </div>
             <div className="min-w-0 text-sm">
-              {inside ? (
+              {skipGeofence ? (
+                <p className="font-medium text-emerald-800">
+                  <CheckCircle2 className="mr-1 inline h-4 w-4" />
+                  GPS shart emas — Face ID bilan belgilang
+                </p>
+              ) : inside ? (
                 <p className="font-medium text-emerald-800">
                   <CheckCircle2 className="mr-1 inline h-4 w-4" />
                   Hududdasiz
@@ -1234,11 +1284,15 @@ export default function DavomatFacePage() {
                 <p className="text-slate-500">«Ruxsat berish» ni bosing — lokatsiya so‘raladi</p>
               )}
               <p className="mt-0.5 text-xs text-slate-500">
-                {workplace?.site?.kind === "branch" ? "Belgilangan filial" : "Asosiy ofis"} · ruxsat {allowedMeters} m
+                {skipGeofence
+                  ? "Masofadan / erkin · filial GPS talab qilinmaydi"
+                  : `${workplace?.site?.kind === "branch" ? "Belgilangan filial" : "Asosiy ofis"} · ruxsat ${allowedMeters} m`}
               </p>
               {workplace?.shift ? (
                 <p className="mt-1 rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-950">
-                  {workplace.shift.label}: {workplace.shift.start}–{workplace.shift.end}. Kechikish — jarima.
+                  {workplace.shift.hoursNote ||
+                    `${workplace.shift.label}: ${workplace.shift.start}–${workplace.shift.end}`}
+                  {workplace.shift.overnight ? " · tungi smena" : ""}. Kechikish — jarima.
                 </p>
               ) : null}
               {site.label ? (

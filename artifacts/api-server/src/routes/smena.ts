@@ -4,7 +4,15 @@ import { db, employeesTable } from "@workspace/db";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import { isHrRole } from "../lib/roles";
 import { notifyUser } from "../lib/notify";
-import { isPharmacyShiftStaff, normalizeShiftType, shiftWindow } from "../lib/shift-hours";
+import {
+  ALL_SHIFTS,
+  isPharmacyShiftStaff,
+  isValidShiftType,
+  normalizeShiftType,
+  shiftHoursLabel,
+  shiftWindow,
+  type ShiftTypeKey,
+} from "../lib/shift-hours";
 
 const router: IRouter = Router();
 
@@ -13,6 +21,10 @@ const MANAGER_ORG = "manager";
 
 function isLeadRole(role: string) {
   return role === "admin" || role === "director" || role === "koordinator" || isHrRole(role);
+}
+
+function isAdminLike(role: string) {
+  return role === "admin" || role === "director" || isHrRole(role);
 }
 
 type EmpRow = {
@@ -116,9 +128,8 @@ function canAssignTarget(opts: {
 }): boolean {
   const { role, me, target, scope } = opts;
   const org = target.orgRole || "";
-  if (isLeadRole(role) && role !== "koordinator") {
-    return STAFF_ORG.has(org) || org === MANAGER_ORG;
-  }
+  // Admin / direktor / HR — istalgan lavozimdagi xodimni smena/filialga o‘tkaza oladi
+  if (isAdminLike(role)) return true;
   if (role === "koordinator") {
     if (!(STAFF_ORG.has(org) || org === MANAGER_ORG)) return false;
     if (!scope) return true;
@@ -151,12 +162,28 @@ function serializeShift(shiftType: string | null) {
   return {
     type: w.key,
     label: w.label,
+    hint: w.hint,
     start: w.start,
     end: w.end,
+    overnight: Boolean(w.overnight),
+    skipGeofence: Boolean(w.skipGeofence),
     warnHm: w.warnHm,
     warnText: w.warnText,
-    hoursNote: `${w.label}: ${w.start}–${w.end}. Kechikish — jarima.`,
+    hoursNote: shiftHoursLabel(shiftType),
   };
+}
+
+function catalogShifts() {
+  return ALL_SHIFTS.map((s) => ({
+    type: s.key,
+    label: s.label,
+    hint: s.hint,
+    start: s.start,
+    end: s.end,
+    overnight: Boolean(s.overnight),
+    skipGeofence: Boolean(s.skipGeofence),
+    hoursNote: shiftHoursLabel(s.key),
+  }));
 }
 
 router.get("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<void> => {
@@ -172,6 +199,7 @@ router.get("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<void
     fullName: string;
     orgRole: string | null;
     shiftType: string;
+    shiftLabel: string;
     assignedBranchId: number | null;
     assignedBranchName: string | null;
   }> = [];
@@ -186,12 +214,13 @@ router.get("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<void
     const branchName = (id: number | null) => branches.find((b) => b.id === id)?.name || null;
     for (const p of people) {
       if (!canAssignTarget({ role, me, target: p, scope })) continue;
-      if (p.id === me.id && (role === "farmasevt" || p.orgRole === "pharmacist")) continue;
+      if (p.id === me.id && (role === "farmasevt" || p.orgRole === "pharmacist") && !isAdminLike(role)) continue;
       assignable.push({
         id: p.id,
         fullName: p.fullName,
         orgRole: p.orgRole,
         shiftType: normalizeShiftType(p.shiftType),
+        shiftLabel: shiftHoursLabel(p.shiftType),
         assignedBranchId: p.assignedBranchId || (p.orgRole === MANAGER_ORG ? p.id : p.reportsToId),
         assignedBranchName:
           branchName(p.assignedBranchId) ||
@@ -202,11 +231,14 @@ router.get("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<void
     assignable.sort((a, b) => a.fullName.localeCompare(b.fullName, "uz"));
   }
 
+  const canPickShift = pharmacy || isAdminLike(role) || Boolean(me);
+
   res.json({
     pharmacyStaff: pharmacy,
-    canPickShift: pharmacy,
+    canPickShift,
     canPickOwnBranch: Boolean(me && canPickOwnBranch(role, me.orgRole)),
     canAssignOthers: assignable.length > 0,
+    canAssignAny: isAdminLike(role),
     employee: me
       ? {
           id: me.id,
@@ -217,13 +249,18 @@ router.get("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<void
         }
       : null,
     shift: serializeShift(me?.shiftType || "one"),
+    shifts: catalogShifts(),
     branches,
     assignable,
     rules: {
       shift1: "1-smena: 08:00–17:00. Ogohlantirish 07:45. Kechiksa — jarima.",
       shift2: "2-smena: 18:00–23:45. Ogohlantirish 17:45. Kechiksa — jarima.",
+      remote: "Masofadan (buxgalter va b.): GPS majburiy emas.",
+      flexible: "Erkin grafik (dastavchik): GPS majburiy emas.",
+      alternate: "Kun ora: 08:00–17:00.",
+      alternateNight: "Kun ora kechki: 17:00–08:00 (ertalab).",
       branch:
-        "Farmasevt qaysi filialga borishini faqat mudir yoki koordinator belgilaydi. Stajyor lokatsiyasini mudir yoki o‘z farmasevti belgilaydi. Smenani xodim o‘zi tanlaydi. Face ID faqat belgilangan filial GPS (35 m) da o‘tadi.",
+        "Admin istalgan lavozimdagi xodimni istalgan smena/filialga o‘tkaza oladi. Face ID filial GPS (35 m) da; masofadan/erkin grafikda GPS talab qilinmaydi.",
     },
   });
 });
@@ -239,16 +276,17 @@ router.patch("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<vo
   const patch: Record<string, unknown> = { updatedAt: new Date() };
 
   if (body.shiftType != null) {
-    if (!isPharmacyShiftStaff(role, me.orgRole)) {
-      res.status(403).json({ error: "Smena tanlash faqat mudir, farmasevt va stajyor uchun" });
+    if (!isPharmacyShiftStaff(role, me.orgRole) && !isAdminLike(role)) {
+      res.status(403).json({ error: "Smena tanlash uchun ruxsat yo‘q" });
       return;
     }
-    if (body.shiftType !== "one" && body.shiftType !== "two") {
-      res.status(400).json({ error: "Smena 1 yoki 2 bo‘lishi kerak" });
+    if (!isValidShiftType(body.shiftType) || body.shiftType === "custom") {
+      res.status(400).json({ error: "Smena turi noto‘g‘ri" });
       return;
     }
-    patch.shiftType = body.shiftType;
-    patch.shiftLabel = body.shiftType === "two" ? "2-smena 18:00–23:45" : "1-smena 08:00–17:00";
+    const st = body.shiftType as ShiftTypeKey;
+    patch.shiftType = st;
+    patch.shiftLabel = shiftHoursLabel(st);
   }
 
   if (body.assignedBranchId !== undefined) {
@@ -289,50 +327,74 @@ router.patch("/smena/assign/:employeeId", requireAuth, async (req: AuthRequest, 
     res.status(403).json({ error: "Bu xodimning filialini belgilash huquqi yo‘q" });
     return;
   }
-  if (target.orgRole === "pharmacist" && !(role === "mudir" || role === "koordinator" || isLeadRole(role))) {
+  if (
+    target.orgRole === "pharmacist" &&
+    !(role === "mudir" || role === "koordinator" || isLeadRole(role))
+  ) {
     res.status(403).json({ error: "Farmasevt filialini faqat mudir yoki koordinator belgilaydi" });
     return;
   }
 
-  const body = req.body as { assignedBranchId?: number; shiftType?: string };
-  const branchId = Number(body.assignedBranchId);
-  const branch = await empById(branchId);
-  if (!branch || branch.orgRole !== MANAGER_ORG || !hasGps(branch)) {
+  const body = req.body as { assignedBranchId?: number | null; shiftType?: string; shiftOnly?: boolean };
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+
+  if (body.shiftType != null) {
+    if (!isValidShiftType(body.shiftType) || body.shiftType === "custom") {
+      res.status(400).json({ error: "Smena turi noto‘g‘ri" });
+      return;
+    }
+    patch.shiftType = body.shiftType;
+    patch.shiftLabel = shiftHoursLabel(body.shiftType);
+  }
+
+  let loc: string | null = null;
+  const wantsBranch = body.assignedBranchId !== undefined && body.assignedBranchId !== null;
+  if (wantsBranch) {
+    const branchId = Number(body.assignedBranchId);
+    const branch = await empById(branchId);
+    if (!branch || branch.orgRole !== MANAGER_ORG || !hasGps(branch)) {
+      res.status(400).json({ error: "Filial GPS kiritilmagan" });
+      return;
+    }
+    loc = (branch.location || "").split("|")[0].trim() || branch.fullName;
+    patch.assignedBranchId = branchId;
+    patch.location = loc;
+  } else if (body.assignedBranchId === null && isAdminLike(role)) {
+    // Masofadan / erkin: filialni olib tashlash mumkin
+    patch.assignedBranchId = null;
+  } else if (body.shiftType == null) {
+    res.status(400).json({ error: "Filial yoki smena kerak" });
+    return;
+  }
+
+  // Filialsiz smena (remote/flexible) uchun branch shart emas
+  const st = body.shiftType ? normalizeShiftType(body.shiftType) : null;
+  const skipBranch =
+    st === "remote" || st === "flexible" || Boolean(body.shiftOnly) || body.assignedBranchId === null;
+  if (!wantsBranch && !skipBranch && body.shiftType == null) {
     res.status(400).json({ error: "Filial GPS kiritilmagan" });
     return;
   }
-  if (body.shiftType != null && body.shiftType !== "one" && body.shiftType !== "two") {
-    res.status(400).json({ error: "Smena 1 yoki 2 bo‘lishi kerak" });
-    return;
-  }
 
-  const loc = (branch.location || "").split("|")[0].trim() || branch.fullName;
-  await db
-    .update(employeesTable)
-    .set({
-      assignedBranchId: branchId,
-      location: loc,
-      ...(body.shiftType
-        ? {
-            shiftType: body.shiftType,
-            shiftLabel: body.shiftType === "two" ? "2-smena 18:00–23:45" : "1-smena 08:00–17:00",
-          }
-        : {}),
-      updatedAt: new Date(),
-    })
-    .where(eq(employeesTable.id, target.id));
+  await db.update(employeesTable).set(patch).where(eq(employeesTable.id, target.id));
 
   if (target.userId) {
-    const shiftTxt = body.shiftType === "two" ? "2-smena 18:00–23:45" : body.shiftType === "one" ? "1-smena 08:00–17:00" : "";
+    const shiftTxt = body.shiftType ? shiftHoursLabel(body.shiftType) : "";
+    const place = loc ? `${loc} filialiga biriktirildi` : "smena yangilandi";
     await notifyUser({
       userId: target.userId,
-      text: `${target.fullName}: ${loc} filialiga biriktirildi${shiftTxt ? `, ${shiftTxt}` : ""}. Face ID faqat shu joydan (35 m).`,
+      text: `${target.fullName}: ${place}${shiftTxt ? `, ${shiftTxt}` : ""}.`,
       type: "smena_branch",
       linkUrl: "/davomat-face",
     });
   }
 
-  res.json({ ok: true, assignedBranchId: branchId, assignedBranchName: loc, shiftType: body.shiftType || target.shiftType });
+  res.json({
+    ok: true,
+    assignedBranchId: wantsBranch ? Number(body.assignedBranchId) : target.assignedBranchId,
+    assignedBranchName: loc,
+    shiftType: body.shiftType || target.shiftType,
+  });
 });
 
 export default router;

@@ -10,6 +10,8 @@ import {
   assignSmenaBranch,
   fetchSmenaMe,
   saveMySmena,
+  shiftTypeShort,
+  type ShiftTypeKey,
   type SmenaAssignable,
   type SmenaBranch,
 } from "../../lib/smena-api";
@@ -18,7 +20,8 @@ function orgLabel(org: string | null) {
   if (org === "pharmacist") return "Farmasevt";
   if (org === "intern") return "Stajyor";
   if (org === "manager") return "Mudir";
-  return "Xodim";
+  if (org === "coordinator") return "Koordinator";
+  return org || "Xodim";
 }
 
 function SearchBox({
@@ -42,6 +45,10 @@ function CompactList({ children }: { children: React.ReactNode }) {
   return <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-white">{children}</div>;
 }
 
+function needsBranch(shift: ShiftTypeKey) {
+  return shift !== "remote" && shift !== "flexible";
+}
+
 export default function SmenaFilialPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -52,12 +59,55 @@ export default function SmenaFilialPage() {
   const [peopleQ, setPeopleQ] = useState("");
   const [pickedBranchId, setPickedBranchId] = useState<number | null>(null);
   const [pickedPersonId, setPickedPersonId] = useState<number | null>(null);
-  const [pickedShift, setPickedShift] = useState<"one" | "two">("one");
+  const [pickedShift, setPickedShift] = useState<ShiftTypeKey>("one");
 
-  const staff = useMemo(
-    () => (data?.assignable ?? []).filter((p) => p.orgRole === "pharmacist" || p.orgRole === "intern"),
-    [data?.assignable],
-  );
+  const staff = useMemo(() => {
+    const list = data?.assignable ?? [];
+    if (data?.canAssignAny) return list;
+    return list.filter((p) => p.orgRole === "pharmacist" || p.orgRole === "intern" || p.orgRole === "manager");
+  }, [data?.assignable, data?.canAssignAny]);
+
+  const shiftOptions = data?.shifts?.length
+    ? data.shifts
+    : [
+        { type: "one" as const, label: "1-smena", hint: "Kunduzgi", start: "08:00", end: "17:00", hoursNote: "1-smena: 08:00–17:00" },
+        { type: "two" as const, label: "2-smena", hint: "Kechki", start: "18:00", end: "23:45", hoursNote: "2-smena: 18:00–23:45" },
+        {
+          type: "remote" as const,
+          label: "Masofadan",
+          hint: "Buxgalter va b.",
+          start: "09:00",
+          end: "18:00",
+          hoursNote: "Masofadan: 09:00–18:00 · GPS majburiy emas",
+          skipGeofence: true,
+        },
+        {
+          type: "flexible" as const,
+          label: "Erkin grafik",
+          hint: "Dastavchik va b.",
+          start: "09:00",
+          end: "21:00",
+          hoursNote: "Erkin grafik: 09:00–21:00 · GPS majburiy emas",
+          skipGeofence: true,
+        },
+        {
+          type: "alternate" as const,
+          label: "Kun ora",
+          hint: "Kun ora ishlaydiganlar",
+          start: "08:00",
+          end: "17:00",
+          hoursNote: "Kun ora: 08:00–17:00",
+        },
+        {
+          type: "alternate_night" as const,
+          label: "Kun ora (kechki)",
+          hint: "17:00–08:00",
+          start: "17:00",
+          end: "08:00",
+          hoursNote: "Kun ora (kechki): 17:00–08:00 (ertalab)",
+          overnight: true,
+        },
+      ];
 
   const branches = useMemo(() => {
     const list = data?.branches ?? [];
@@ -70,15 +120,16 @@ export default function SmenaFilialPage() {
     const s = peopleQ.trim().toLowerCase();
     if (!s) return staff;
     return staff.filter((p) =>
-      `${p.fullName} ${orgLabel(p.orgRole)} ${p.assignedBranchName || ""}`.toLowerCase().includes(s),
+      `${p.fullName} ${orgLabel(p.orgRole)} ${p.assignedBranchName || ""} ${p.shiftLabel || ""}`.toLowerCase().includes(s),
     );
   }, [staff, peopleQ]);
 
   const picked = staff.find((p) => p.id === pickedPersonId) ?? null;
   const pickedBranch = (data?.branches ?? []).find((b) => b.id === pickedBranchId) ?? null;
+  const branchRequired = needsBranch(pickedShift);
 
   const saveMine = useMutation({
-    mutationFn: (body: { shiftType?: "one" | "two"; assignedBranchId?: number }) => saveMySmena(body),
+    mutationFn: (body: { shiftType?: ShiftTypeKey; assignedBranchId?: number }) => saveMySmena(body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["smena-me"] });
       toast({ title: "Saqlandi" });
@@ -87,11 +138,15 @@ export default function SmenaFilialPage() {
   });
 
   const saveAssign = useMutation({
-    mutationFn: (p: { id: number; assignedBranchId: number; shiftType: "one" | "two" }) =>
-      assignSmenaBranch(p.id, p.assignedBranchId, p.shiftType),
+    mutationFn: (p: {
+      id: number;
+      assignedBranchId: number | null;
+      shiftType: ShiftTypeKey;
+      shiftOnly?: boolean;
+    }) => assignSmenaBranch(p.id, p.assignedBranchId, p.shiftType, { shiftOnly: p.shiftOnly }),
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ["smena-me"] });
-      toast({ title: "Saqlandi", description: r.assignedBranchName });
+      toast({ title: "Saqlandi", description: r.assignedBranchName || "Smena yangilandi" });
       cancelEdit();
     },
     onError: (e: Error) => toast({ title: "Saqlanmadi", description: e.message, variant: "destructive" }),
@@ -99,7 +154,8 @@ export default function SmenaFilialPage() {
 
   function pickPerson(p: SmenaAssignable) {
     setPickedPersonId(p.id);
-    setPickedShift(p.shiftType === "two" ? "two" : "one");
+    const st = (p.shiftType || "one") as ShiftTypeKey;
+    setPickedShift(st === "custom" ? "one" : st);
     setPickedBranchId(p.assignedBranchId);
     setBranchQ("");
   }
@@ -112,11 +168,20 @@ export default function SmenaFilialPage() {
   }
 
   function onSaveTeam() {
-    if (!pickedPersonId || !pickedBranchId) {
-      toast({ title: "Tanlang", description: "Xodim va filialni tanlang.", variant: "destructive" });
+    if (!pickedPersonId) {
+      toast({ title: "Tanlang", description: "Xodimni tanlang.", variant: "destructive" });
       return;
     }
-    saveAssign.mutate({ id: pickedPersonId, assignedBranchId: pickedBranchId, shiftType: pickedShift });
+    if (branchRequired && !pickedBranchId) {
+      toast({ title: "Tanlang", description: "Filialni tanlang.", variant: "destructive" });
+      return;
+    }
+    saveAssign.mutate({
+      id: pickedPersonId,
+      assignedBranchId: branchRequired ? pickedBranchId : null,
+      shiftType: pickedShift,
+      shiftOnly: !branchRequired,
+    });
   }
 
   function renderBranchRow(b: SmenaBranch) {
@@ -137,6 +202,48 @@ export default function SmenaFilialPage() {
     );
   }
 
+  function ShiftGrid({
+    value,
+    onChange,
+    disabled,
+  }: {
+    value: ShiftTypeKey;
+    onChange: (v: ShiftTypeKey) => void;
+    disabled?: boolean;
+  }) {
+    return (
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {shiftOptions.map((s) => {
+          const on = value === s.type;
+          return (
+            <button
+              key={s.type}
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(s.type)}
+              className={cn(
+                "rounded-xl border px-3 py-2.5 text-left transition",
+                on
+                  ? "border-[#0b3a5c] bg-[#0b3a5c] text-white shadow-sm"
+                  : "border-slate-200 bg-white text-slate-800 hover:border-slate-300",
+              )}
+            >
+              <span className="block text-sm font-semibold">{s.label}</span>
+              <span className={cn("mt-0.5 block text-[11px] leading-snug", on ? "text-white/80" : "text-slate-500")}>
+                {s.hoursNote || `${s.start}–${s.end}`}
+              </span>
+              {s.hint ? (
+                <span className={cn("mt-1 block text-[10px] leading-snug", on ? "text-sky-100" : "text-slate-400")}>
+                  {s.hint}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   if (q.isLoading) return <p className="p-6 text-sm text-slate-500">Yuklanmoqda…</p>;
   if (!data) return <p className="p-6 text-sm text-rose-600">Ma’lumot yuklanmadi</p>;
 
@@ -144,7 +251,11 @@ export default function SmenaFilialPage() {
     <div className="mx-auto max-w-lg space-y-4 p-4 pb-28">
       <div>
         <h1 className="text-xl font-semibold text-slate-900">Smena va filial</h1>
-        <p className="mt-1 text-sm text-slate-600">Xodimni tanlang, pastdan filial va smenani belgilang, Saqlash.</p>
+        <p className="mt-1 text-sm text-slate-600">
+          {data.canAssignAny
+            ? "Admin: istalgan lavozimdagi xodimni smena yoki filialga o‘tkazing."
+            : "Xodimni tanlang, pastdan filial va smenani belgilang, Saqlash."}
+        </p>
       </div>
 
       {data.canPickShift ? (
@@ -155,23 +266,15 @@ export default function SmenaFilialPage() {
               Mening smenam
             </CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-2 pt-0">
-            <Button
-              size="sm"
-              variant={data.shift.type === "one" ? "default" : "outline"}
+          <CardContent className="space-y-3 pt-0">
+            <p className="text-xs text-slate-500">
+              Hozir: <b className="text-slate-800">{data.shift.hoursNote}</b>
+            </p>
+            <ShiftGrid
+              value={data.shift.type}
               disabled={saveMine.isPending}
-              onClick={() => saveMine.mutate({ shiftType: "one" })}
-            >
-              1-smena
-            </Button>
-            <Button
-              size="sm"
-              variant={data.shift.type === "two" ? "default" : "outline"}
-              disabled={saveMine.isPending}
-              onClick={() => saveMine.mutate({ shiftType: "two" })}
-            >
-              2-smena
-            </Button>
+              onChange={(v) => saveMine.mutate({ shiftType: v })}
+            />
           </CardContent>
         </Card>
       ) : null}
@@ -181,7 +284,7 @@ export default function SmenaFilialPage() {
           <CardHeader className="py-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <Users className="h-4 w-4" />
-              Farmasevt va stajyorlar
+              {data.canAssignAny ? "Barcha xodimlar" : "Farmasevt va stajyorlar"}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 pt-0">
@@ -202,7 +305,7 @@ export default function SmenaFilialPage() {
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium text-slate-900">{p.fullName}</span>
                       <span className="text-[11px] text-slate-500">
-                        {orgLabel(p.orgRole)} · {p.shiftType === "two" ? "2-smena" : "1-smena"} ·{" "}
+                        {orgLabel(p.orgRole)} · {p.shiftLabel || shiftTypeShort(p.shiftType)} ·{" "}
                         {p.assignedBranchName || "filial yo‘q"}
                       </span>
                     </span>
@@ -223,27 +326,29 @@ export default function SmenaFilialPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <p className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
-                    <MapPin className="h-3.5 w-3.5" />
-                    Filial {pickedBranch ? `· ${pickedBranch.name}` : ""}
-                  </p>
-                  <SearchBox value={branchQ} onChange={setBranchQ} placeholder="Filial qidirish…" />
-                  <CompactList>
-                    {branches.map(renderBranchRow)}
-                    {branches.length === 0 ? (
-                      <p className="px-3 py-3 text-center text-xs text-slate-400">Filial topilmadi</p>
-                    ) : null}
-                  </CompactList>
+                  <p className="text-xs font-medium text-slate-700">Smena / ish vaqti</p>
+                  <ShiftGrid value={pickedShift} onChange={setPickedShift} />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <Button size="sm" variant={pickedShift === "one" ? "default" : "outline"} onClick={() => setPickedShift("one")}>
-                    1-smena
-                  </Button>
-                  <Button size="sm" variant={pickedShift === "two" ? "default" : "outline"} onClick={() => setPickedShift("two")}>
-                    2-smena
-                  </Button>
-                </div>
+                {branchRequired ? (
+                  <div className="space-y-2">
+                    <p className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
+                      <MapPin className="h-3.5 w-3.5" />
+                      Filial {pickedBranch ? `· ${pickedBranch.name}` : ""}
+                    </p>
+                    <SearchBox value={branchQ} onChange={setBranchQ} placeholder="Filial qidirish…" />
+                    <CompactList>
+                      {branches.map(renderBranchRow)}
+                      {branches.length === 0 ? (
+                        <p className="px-3 py-3 text-center text-xs text-slate-400">Filial topilmadi</p>
+                      ) : null}
+                    </CompactList>
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                    Bu smenada filial GPS majburiy emas (masofadan / erkin grafik).
+                  </p>
+                )}
 
                 <div className="grid grid-cols-2 gap-2">
                   <Button type="button" variant="outline" onClick={cancelEdit}>
@@ -256,7 +361,7 @@ export default function SmenaFilialPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-center text-xs text-slate-400">Xodimni bosing — pastda filial ochiladi</p>
+              <p className="text-center text-xs text-slate-400">Xodimni bosing — pastda smena ochiladi</p>
             )}
           </CardContent>
         </Card>
@@ -275,7 +380,13 @@ export default function SmenaFilialPage() {
             <SearchBox value={branchQ} onChange={setBranchQ} placeholder="Filial qidirish…" />
             <CompactList>{branches.map(renderBranchRow)}</CompactList>
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" onClick={() => { setPickedBranchId(data.employee?.assignedBranchId ?? null); setBranchQ(""); }}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setPickedBranchId(data.employee?.assignedBranchId ?? null);
+                  setBranchQ("");
+                }}
+              >
                 Bekor qilish
               </Button>
               <Button
@@ -290,6 +401,12 @@ export default function SmenaFilialPage() {
       ) : (
         <p className="text-sm text-slate-500">
           Filialingiz: <b>{data.employee?.assignedBranchName || "belgilanmagan"}</b>
+          {data.shift ? (
+            <>
+              <br />
+              Smena: <b>{data.shift.hoursNote}</b>
+            </>
+          ) : null}
         </p>
       )}
     </div>

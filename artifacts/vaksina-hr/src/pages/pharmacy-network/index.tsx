@@ -63,7 +63,7 @@ import {
 } from '../../lib/pharmacy-staff-api';
 import { Label } from '../../components/ui/label';
 
-type ShiftType = 'one' | 'two' | 'custom';
+type ShiftType = 'one' | 'two' | 'remote' | 'flexible' | 'alternate' | 'alternate_night' | 'custom';
 type BranchEmployee = Employee & {
   latitude?: number | null;
   longitude?: number | null;
@@ -80,6 +80,10 @@ function initials(name: string) {
 
 function shiftText(shiftType?: string | null, shiftLabel?: string | null) {
   if (shiftType === 'two') return '2-smena';
+  if (shiftType === 'remote') return 'Masofadan';
+  if (shiftType === 'flexible') return 'Erkin grafik';
+  if (shiftType === 'alternate') return 'Kun ora';
+  if (shiftType === 'alternate_night') return 'Kun ora (kechki)';
   if (shiftType === 'custom') return shiftLabel?.trim() || 'Maxsus holat';
   return '1-smena';
 }
@@ -175,11 +179,15 @@ function ShiftBadge({
   const label = shiftText(shiftType, shiftLabel);
   const tone = alert
     ? 'bg-red-100 text-red-800 ring-red-300'
-    : shiftType === 'two'
+    : shiftType === 'two' || shiftType === 'alternate_night'
       ? 'bg-teal-50 text-teal-700 ring-teal-200'
-      : shiftType === 'custom'
-        ? 'bg-amber-50 text-amber-800 ring-amber-200'
-        : 'bg-sky-50 text-sky-700 ring-sky-200';
+      : shiftType === 'remote' || shiftType === 'flexible'
+        ? 'bg-violet-50 text-violet-800 ring-violet-200'
+        : shiftType === 'alternate'
+          ? 'bg-indigo-50 text-indigo-800 ring-indigo-200'
+          : shiftType === 'custom'
+            ? 'bg-amber-50 text-amber-800 ring-amber-200'
+            : 'bg-sky-50 text-sky-700 ring-sky-200';
 
   return (
     <span className={cn('inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset', tone)}>
@@ -1395,6 +1403,10 @@ export default function PharmacyNetworkPage() {
               <SelectItem value="all">Barcha smenalar</SelectItem>
               <SelectItem value="one">1-smena</SelectItem>
               <SelectItem value="two">2-smena</SelectItem>
+              <SelectItem value="remote">Masofadan</SelectItem>
+              <SelectItem value="flexible">Erkin grafik</SelectItem>
+              <SelectItem value="alternate">Kun ora</SelectItem>
+              <SelectItem value="alternate_night">Kun ora (kechki)</SelectItem>
               <SelectItem value="custom">Maxsus</SelectItem>
             </SelectContent>
           </Select>
@@ -2328,8 +2340,12 @@ export default function PharmacyNetworkPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="one">1-smena</SelectItem>
-                      <SelectItem value="two">2-smena</SelectItem>
+                      <SelectItem value="one">1-smena · 08:00–17:00</SelectItem>
+                      <SelectItem value="two">2-smena · 18:00–23:45</SelectItem>
+                      <SelectItem value="remote">Masofadan · 09:00–18:00 (GPS yo‘q)</SelectItem>
+                      <SelectItem value="flexible">Erkin grafik · 09:00–21:00 (GPS yo‘q)</SelectItem>
+                      <SelectItem value="alternate">Kun ora · 08:00–17:00</SelectItem>
+                      <SelectItem value="alternate_night">Kun ora kechki · 17:00–08:00</SelectItem>
                       <SelectItem value="custom">Mudir belgilagan holat</SelectItem>
                     </SelectContent>
                   </Select>

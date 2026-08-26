@@ -22,7 +22,13 @@ import {
   DEFAULT_OFFICE_DMS as DAVOMAT_SITE_LABEL,
 } from "../lib/office-location";
 import { setSessionCookie } from "../lib/session";
-import { hoursForStaff, isPharmacyShiftStaff, shiftWindow } from "../lib/shift-hours";
+import {
+  hoursForStaff,
+  isPharmacyShiftStaff,
+  shiftHoursLabel,
+  shiftSkipsGeofence,
+  shiftWindow,
+} from "../lib/shift-hours";
 
 const router: IRouter = Router();
 
@@ -966,8 +972,33 @@ async function geoGate(
     }
 > {
   const resolved = await resolveDavomatPoint(emp, userRole);
-  if (!resolved.ok) return resolved;
+  if (!resolved.ok) {
+    // Masofadan / erkin grafik — filial GPS yo‘q bo‘lsa ham davomatga ruxsat
+    if (shiftSkipsGeofence(emp.shiftType)) {
+      const office = await getOfficeLocation();
+      return {
+        ok: true,
+        distanceMeters: 0,
+        effectiveRadius: 0,
+        point: {
+          latitude: office.latitude,
+          longitude: office.longitude,
+          label: shiftHoursLabel(emp.shiftType),
+          kind: "office",
+        },
+      };
+    }
+    return resolved;
+  }
   const point = resolved.point;
+  if (shiftSkipsGeofence(emp.shiftType)) {
+    return {
+      ok: true,
+      distanceMeters: 0,
+      effectiveRadius: 0,
+      point: { ...point, label: `${point.label} · ${shiftHoursLabel(emp.shiftType)}` },
+    };
+  }
   const distanceMeters = haversineMeters(latitude, longitude, point.latitude, point.longitude);
   const effectiveRadius = DAVOMAT_GEOFENCE_METERS;
 
@@ -1243,12 +1274,13 @@ router.get("/davomat/me/workplace", requireAuth, async (req: AuthRequest, res): 
     const emp = await ensureEmployeeForUser(user);
     const resolved = await resolveDavomatPoint(emp, user.role);
     const office = await getOfficeLocation();
+    const skipGps = shiftSkipsGeofence(emp.shiftType);
     const point = resolved.ok
       ? resolved.point
       : {
           latitude: office.latitude,
           longitude: office.longitude,
-          label: office.label,
+          label: skipGps ? shiftHoursLabel(emp.shiftType) : office.label,
           kind: "office" as const,
         };
     const workDate = todayTashkent();
@@ -1264,29 +1296,30 @@ router.get("/davomat/me/workplace", requireAuth, async (req: AuthRequest, res): 
       .limit(1);
 
     res.json({
-      allowedMeters: DAVOMAT_GEOFENCE_METERS,
+      allowedMeters: skipGps ? 0 : DAVOMAT_GEOFENCE_METERS,
       site: {
         label: point.label,
         latitude: point.latitude,
         longitude: point.longitude,
         kind: point.kind,
       },
-      gpsReady: resolved.ok,
-      gpsError: resolved.ok ? null : String(resolved.body.error || "Filial GPS yo‘q"),
+      gpsReady: resolved.ok || skipGps,
+      gpsError: resolved.ok || skipGps ? null : String(resolved.body.error || "Filial GPS yo‘q"),
       workDate,
       shift: (() => {
         const w = shiftWindow(emp.shiftType);
-        const pharmacy = isPharmacyShiftStaff(user.role, emp.orgRole);
-        return pharmacy
-          ? {
-              type: w.key,
-              label: w.label,
-              start: w.start,
-              end: w.end,
-              warnHm: w.warnHm,
-              warnText: w.warnText,
-            }
-          : null;
+        return {
+          type: w.key,
+          label: w.label,
+          hint: w.hint,
+          start: w.start,
+          end: w.end,
+          overnight: Boolean(w.overnight),
+          skipGeofence: Boolean(w.skipGeofence),
+          hoursNote: shiftHoursLabel(emp.shiftType),
+          warnHm: w.warnHm,
+          warnText: w.warnText,
+        };
       })(),
       employee: {
         id: emp.id,
@@ -1294,7 +1327,8 @@ router.get("/davomat/me/workplace", requireAuth, async (req: AuthRequest, res): 
         location: point.label,
         latitude: point.latitude,
         longitude: point.longitude,
-        hasGps: resolved.ok,
+        hasGps: resolved.ok || shiftSkipsGeofence(emp.shiftType),
+        shiftType: emp.shiftType,
       },
       today: rec
         ? {

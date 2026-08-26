@@ -59,6 +59,10 @@ const ORG_ROLE_UZ: Record<string, string> = {
 const SHIFT_UZ: Record<string, string> = {
   one: "1-smena",
   two: "2-smena",
+  remote: "Masofadan",
+  flexible: "Erkin grafik",
+  alternate: "Kun ora",
+  alternate_night: "Kun ora (kechki)",
   custom: "Maxsus",
 };
 
