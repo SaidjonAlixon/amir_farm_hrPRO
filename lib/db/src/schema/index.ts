@@ -21,3 +21,4 @@ export * from "./telegram";
 export * from "./payroll";
 export * from "./settlement";
 export * from "./job-roles";
+export * from "./shift-templates";

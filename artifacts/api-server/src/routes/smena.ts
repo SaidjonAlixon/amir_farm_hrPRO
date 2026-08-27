@@ -5,14 +5,14 @@ import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import { isHrRole } from "../lib/roles";
 import { notifyUser } from "../lib/notify";
 import {
-  ALL_SHIFTS,
-  isPharmacyShiftStaff,
-  isValidShiftType,
-  normalizeShiftType,
-  shiftHoursLabel,
-  shiftWindow,
-  type ShiftTypeKey,
-} from "../lib/shift-hours";
+  getCatalogShifts,
+  isValidHm,
+  normalizeHm,
+  reloadShiftCatalog,
+  resolveEmployeeShift,
+  shiftHoursLabelForEmployee,
+} from "../lib/shift-catalog";
+import { isPharmacyShiftStaff, isValidShiftType, normalizeShiftType, type ShiftTypeKey } from "../lib/shift-hours";
 
 const router: IRouter = Router();
 
@@ -31,10 +31,14 @@ type EmpRow = {
   id: number;
   userId: number | null;
   fullName: string;
+  position: string;
   orgRole: string | null;
   reportsToId: number | null;
   assignedBranchId: number | null;
   shiftType: string | null;
+  shiftLabel: string | null;
+  shiftStart: string | null;
+  shiftEnd: string | null;
   location: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -45,10 +49,14 @@ const EMP_COLS = {
   id: employeesTable.id,
   userId: employeesTable.userId,
   fullName: employeesTable.fullName,
+  position: employeesTable.position,
   orgRole: employeesTable.orgRole,
   reportsToId: employeesTable.reportsToId,
   assignedBranchId: employeesTable.assignedBranchId,
   shiftType: employeesTable.shiftType,
+  shiftLabel: employeesTable.shiftLabel,
+  shiftStart: employeesTable.shiftStart,
+  shiftEnd: employeesTable.shiftEnd,
   location: employeesTable.location,
   latitude: employeesTable.latitude,
   longitude: employeesTable.longitude,
@@ -90,6 +98,7 @@ async function listBranches() {
     .filter(hasGps)
     .map((b) => ({
       id: b.id,
+      fullName: b.fullName,
       name: (b.location || "").split("|")[0].trim() || b.fullName,
       managerName: b.fullName,
       hasGps: true,
@@ -128,7 +137,6 @@ function canAssignTarget(opts: {
 }): boolean {
   const { role, me, target, scope } = opts;
   const org = target.orgRole || "";
-  // Admin / direktor / HR — istalgan lavozimdagi xodimni smena/filialga o‘tkaza oladi
   if (isAdminLike(role)) return true;
   if (role === "koordinator") {
     if (!(STAFF_ORG.has(org) || org === MANAGER_ORG)) return false;
@@ -157,8 +165,9 @@ function canAssignTarget(opts: {
   return false;
 }
 
-function serializeShift(shiftType: string | null) {
-  const w = shiftWindow(shiftType);
+function serializeShift(emp: EmpRow | null) {
+  const fields = emp || { shiftType: "one" };
+  const w = resolveEmployeeShift(fields);
   return {
     type: w.key,
     label: w.label,
@@ -169,12 +178,15 @@ function serializeShift(shiftType: string | null) {
     skipGeofence: Boolean(w.skipGeofence),
     warnHm: w.warnHm,
     warnText: w.warnText,
-    hoursNote: shiftHoursLabel(shiftType),
+    hoursNote: shiftHoursLabelForEmployee(fields),
+    shiftLabel: emp?.shiftLabel ?? null,
+    shiftStart: emp?.shiftStart ?? null,
+    shiftEnd: emp?.shiftEnd ?? null,
   };
 }
 
 function catalogShifts() {
-  return ALL_SHIFTS.map((s) => ({
+  return getCatalogShifts().map((s) => ({
     type: s.key,
     label: s.label,
     hint: s.hint,
@@ -182,11 +194,52 @@ function catalogShifts() {
     end: s.end,
     overnight: Boolean(s.overnight),
     skipGeofence: Boolean(s.skipGeofence),
-    hoursNote: shiftHoursLabel(s.key),
+    hoursNote: s.skipGeofence
+      ? `${s.label}: ${s.start}–${s.end} · GPS majburiy emas`
+      : s.overnight
+        ? `${s.label}: ${s.start}–${s.end} (ertalab)`
+        : `${s.label}: ${s.start}–${s.end}`,
   }));
 }
 
+function applyShiftPatch(
+  body: {
+    shiftType?: string;
+    shiftLabel?: string;
+    shiftStart?: string;
+    shiftEnd?: string;
+  },
+  patch: Record<string, unknown>,
+  opts: { adminLike: boolean },
+) {
+  if (body.shiftType == null) return null;
+  if (!isValidShiftType(body.shiftType)) {
+    return "Smena turi noto‘g‘ri";
+  }
+  const st = body.shiftType as ShiftTypeKey;
+  if (st === "custom") {
+    if (!opts.adminLike) return "Maxsus smena vaqtini faqat admin belgilaydi";
+    if (!isValidHm(body.shiftStart) || !isValidHm(body.shiftEnd)) {
+      return "Maxsus smena uchun boshlanish va tugash vaqti (HH:MM) kerak";
+    }
+    const start = normalizeHm(body.shiftStart!);
+    const end = normalizeHm(body.shiftEnd!);
+    const label = body.shiftLabel?.trim() || "Maxsus";
+    patch.shiftType = "custom";
+    patch.shiftStart = start;
+    patch.shiftEnd = end;
+    patch.shiftLabel = label;
+    return null;
+  }
+  patch.shiftType = st;
+  patch.shiftStart = null;
+  patch.shiftEnd = null;
+  patch.shiftLabel = shiftHoursLabelForEmployee({ shiftType: st });
+  return null;
+}
+
 router.get("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  await reloadShiftCatalog();
   const role = req.userRole || "";
   const me = await empByUserId(req.userId!);
   const pharmacy = isPharmacyShiftStaff(role, me?.orgRole);
@@ -197,9 +250,12 @@ router.get("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<void
   const assignable: Array<{
     id: number;
     fullName: string;
+    position: string;
     orgRole: string | null;
     shiftType: string;
     shiftLabel: string;
+    shiftStart: string | null;
+    shiftEnd: string | null;
     assignedBranchId: number | null;
     assignedBranchName: string | null;
   }> = [];
@@ -218,9 +274,12 @@ router.get("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<void
       assignable.push({
         id: p.id,
         fullName: p.fullName,
+        position: p.position,
         orgRole: p.orgRole,
         shiftType: normalizeShiftType(p.shiftType),
-        shiftLabel: shiftHoursLabel(p.shiftType),
+        shiftLabel: shiftHoursLabelForEmployee(p),
+        shiftStart: p.shiftStart,
+        shiftEnd: p.shiftEnd,
         assignedBranchId: p.assignedBranchId || (p.orgRole === MANAGER_ORG ? p.id : p.reportsToId),
         assignedBranchName:
           branchName(p.assignedBranchId) ||
@@ -239,6 +298,7 @@ router.get("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<void
     canPickOwnBranch: Boolean(me && canPickOwnBranch(role, me.orgRole)),
     canAssignOthers: assignable.length > 0,
     canAssignAny: isAdminLike(role),
+    canEditShiftTemplates: isAdminLike(role),
     employee: me
       ? {
           id: me.id,
@@ -248,17 +308,12 @@ router.get("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<void
           assignedBranchName: assigned?.name || me.location || null,
         }
       : null,
-    shift: serializeShift(me?.shiftType || "one"),
+    shift: serializeShift(me),
     shifts: catalogShifts(),
-    branches,
+    branches: branches.map(({ id, name, managerName, hasGps }) => ({ id, name, managerName, hasGps })),
     assignable,
     rules: {
-      shift1: "1-smena: 08:00–17:00. Ogohlantirish 07:45. Kechiksa — jarima.",
-      shift2: "2-smena: 18:00–23:45. Ogohlantirish 17:45. Kechiksa — jarima.",
-      remote: "Masofadan (buxgalter va b.): GPS majburiy emas.",
-      flexible: "Erkin grafik (dastavchik): GPS majburiy emas.",
-      alternate: "Kun ora: 08:00–17:00.",
-      alternateNight: "Kun ora kechki: 17:00–08:00 (ertalab).",
+      custom: "Admin istalgan lavozimdagi xodimga maxsus ish vaqti belgilay oladi.",
       branch:
         "Admin istalgan lavozimdagi xodimni istalgan smena/filialga o‘tkaza oladi. Face ID filial GPS (35 m) da; masofadan/erkin grafikda GPS talab qilinmaydi.",
     },
@@ -272,7 +327,13 @@ router.patch("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<vo
     res.status(400).json({ error: "Xodim kartochkasi yo‘q" });
     return;
   }
-  const body = req.body as { shiftType?: string; assignedBranchId?: number | null };
+  const body = req.body as {
+    shiftType?: string;
+    assignedBranchId?: number | null;
+    shiftLabel?: string;
+    shiftStart?: string;
+    shiftEnd?: string;
+  };
   const patch: Record<string, unknown> = { updatedAt: new Date() };
 
   if (body.shiftType != null) {
@@ -280,13 +341,11 @@ router.patch("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<vo
       res.status(403).json({ error: "Smena tanlash uchun ruxsat yo‘q" });
       return;
     }
-    if (!isValidShiftType(body.shiftType) || body.shiftType === "custom") {
-      res.status(400).json({ error: "Smena turi noto‘g‘ri" });
+    const err = applyShiftPatch(body, patch, { adminLike: isAdminLike(role) });
+    if (err) {
+      res.status(400).json({ error: err });
       return;
     }
-    const st = body.shiftType as ShiftTypeKey;
-    patch.shiftType = st;
-    patch.shiftLabel = shiftHoursLabel(st);
   }
 
   if (body.assignedBranchId !== undefined) {
@@ -335,16 +394,22 @@ router.patch("/smena/assign/:employeeId", requireAuth, async (req: AuthRequest, 
     return;
   }
 
-  const body = req.body as { assignedBranchId?: number | null; shiftType?: string; shiftOnly?: boolean };
+  const body = req.body as {
+    assignedBranchId?: number | null;
+    shiftType?: string;
+    shiftOnly?: boolean;
+    shiftLabel?: string;
+    shiftStart?: string;
+    shiftEnd?: string;
+  };
   const patch: Record<string, unknown> = { updatedAt: new Date() };
 
   if (body.shiftType != null) {
-    if (!isValidShiftType(body.shiftType) || body.shiftType === "custom") {
-      res.status(400).json({ error: "Smena turi noto‘g‘ri" });
+    const err = applyShiftPatch(body, patch, { adminLike: isAdminLike(role) });
+    if (err) {
+      res.status(400).json({ error: err });
       return;
     }
-    patch.shiftType = body.shiftType;
-    patch.shiftLabel = shiftHoursLabel(body.shiftType);
   }
 
   let loc: string | null = null;
@@ -360,17 +425,19 @@ router.patch("/smena/assign/:employeeId", requireAuth, async (req: AuthRequest, 
     patch.assignedBranchId = branchId;
     patch.location = loc;
   } else if (body.assignedBranchId === null && isAdminLike(role)) {
-    // Masofadan / erkin: filialni olib tashlash mumkin
     patch.assignedBranchId = null;
   } else if (body.shiftType == null) {
     res.status(400).json({ error: "Filial yoki smena kerak" });
     return;
   }
 
-  // Filialsiz smena (remote/flexible) uchun branch shart emas
   const st = body.shiftType ? normalizeShiftType(body.shiftType) : null;
   const skipBranch =
-    st === "remote" || st === "flexible" || Boolean(body.shiftOnly) || body.assignedBranchId === null;
+    st === "remote" ||
+    st === "flexible" ||
+    st === "custom" ||
+    Boolean(body.shiftOnly) ||
+    body.assignedBranchId === null;
   if (!wantsBranch && !skipBranch && body.shiftType == null) {
     res.status(400).json({ error: "Filial GPS kiritilmagan" });
     return;
@@ -379,7 +446,14 @@ router.patch("/smena/assign/:employeeId", requireAuth, async (req: AuthRequest, 
   await db.update(employeesTable).set(patch).where(eq(employeesTable.id, target.id));
 
   if (target.userId) {
-    const shiftTxt = body.shiftType ? shiftHoursLabel(body.shiftType) : "";
+    const shiftTxt = body.shiftType
+      ? shiftHoursLabelForEmployee({
+          shiftType: body.shiftType,
+          shiftStart: (patch.shiftStart as string) ?? target.shiftStart,
+          shiftEnd: (patch.shiftEnd as string) ?? target.shiftEnd,
+          shiftLabel: (patch.shiftLabel as string) ?? target.shiftLabel,
+        })
+      : "";
     const place = loc ? `${loc} filialiga biriktirildi` : "smena yangilandi";
     await notifyUser({
       userId: target.userId,

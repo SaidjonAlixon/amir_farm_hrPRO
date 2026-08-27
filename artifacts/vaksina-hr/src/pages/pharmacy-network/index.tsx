@@ -418,6 +418,8 @@ export default function PharmacyNetworkPage() {
   const [editTarget, setEditTarget] = useState<Employee | null>(null);
   const [shiftType, setShiftType] = useState<ShiftType>('one');
   const [shiftLabel, setShiftLabel] = useState('');
+  const [shiftStart, setShiftStart] = useState('09:00');
+  const [shiftEnd, setShiftEnd] = useState('18:00');
   const [employmentStatus, setEmploymentStatus] = useState<EmploymentStatus>('working');
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
@@ -676,6 +678,8 @@ export default function PharmacyNetworkPage() {
     setEditPhone(String((person as Employee & { phone?: string | null }).phone || ''));
     setShiftType((person.shiftType as ShiftType) || 'one');
     setShiftLabel(person.shiftLabel ?? '');
+    setShiftStart((person as Employee & { shiftStart?: string }).shiftStart || '09:00');
+    setShiftEnd((person as Employee & { shiftEnd?: string }).shiftEnd || '18:00');
     setEmploymentStatus(empStatus(person));
   };
 
@@ -841,6 +845,7 @@ export default function PharmacyNetworkPage() {
         phone: editPhone.trim(),
         shiftType,
         shiftLabel: shiftType === 'custom' ? shiftLabel.trim() || 'Maxsus holat' : '',
+        ...(shiftType === 'custom' ? { shiftStart: shiftStart.trim(), shiftEnd: shiftEnd.trim() } : { shiftStart: '', shiftEnd: '' }),
         ...(canEditStatus ? { employmentStatus } : {}),
       },
       {
@@ -2356,8 +2361,18 @@ export default function PharmacyNetworkPage() {
                     <Input
                       value={shiftLabel}
                       onChange={(e) => setShiftLabel(e.target.value)}
-                      placeholder="Masalan: Navbatchi..."
+                      placeholder="Masalan: Buxgalter, Navbatchi..."
                     />
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="mb-1 text-xs text-slate-600">Boshlanish</p>
+                        <Input type="time" value={shiftStart} onChange={(e) => setShiftStart(e.target.value)} />
+                      </div>
+                      <div>
+                        <p className="mb-1 text-xs text-slate-600">Tugash</p>
+                        <Input type="time" value={shiftEnd} onChange={(e) => setShiftEnd(e.target.value)} />
+                      </div>
+                    </div>
                   </div>
                 )}
               </>

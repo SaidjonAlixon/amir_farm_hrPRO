@@ -17,9 +17,12 @@ export type SmenaBranch = {
 export type SmenaAssignable = {
   id: number;
   fullName: string;
+  position?: string;
   orgRole: string | null;
   shiftType: string;
   shiftLabel?: string;
+  shiftStart?: string | null;
+  shiftEnd?: string | null;
   assignedBranchId: number | null;
   assignedBranchName: string | null;
 };
@@ -35,6 +38,22 @@ export type SmenaShiftInfo = {
   warnHm: string;
   warnText: string;
   hoursNote: string;
+  shiftLabel?: string | null;
+  shiftStart?: string | null;
+  shiftEnd?: string | null;
+};
+
+export type ShiftTemplate = {
+  key: ShiftTypeKey;
+  label: string;
+  hint: string;
+  start: string;
+  end: string;
+  overnight?: boolean;
+  skipGeofence?: boolean;
+  warnHm: string;
+  warnText: string;
+  hoursNote: string;
 };
 
 export type SmenaMe = {
@@ -43,6 +62,7 @@ export type SmenaMe = {
   canPickOwnBranch: boolean;
   canAssignOthers: boolean;
   canAssignAny?: boolean;
+  canEditShiftTemplates?: boolean;
   employee: {
     id: number;
     fullName: string;
@@ -85,9 +105,26 @@ export function fetchSmenaMe(): Promise<SmenaMe> {
   return apiJson<SmenaMe>("/smena/me");
 }
 
+export function fetchShiftTemplates(): Promise<{ shifts: ShiftTemplate[] }> {
+  return apiJson<{ shifts: ShiftTemplate[] }>("/shift-templates");
+}
+
+export function saveShiftTemplate(
+  key: string,
+  body: Partial<{ label: string; hint: string; start: string; end: string; warnHm: string; warnText: string }>,
+) {
+  return apiJson<{ ok: boolean; shift: ShiftTemplate }>(`/shift-templates/${key}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
 export function saveMySmena(body: {
   shiftType?: ShiftTypeKey;
   assignedBranchId?: number | null;
+  shiftLabel?: string;
+  shiftStart?: string;
+  shiftEnd?: string;
 }) {
   return apiJson<{ ok: boolean }>("/smena/me", {
     method: "PATCH",
@@ -99,7 +136,7 @@ export function assignSmenaBranch(
   employeeId: number,
   assignedBranchId: number | null,
   shiftType?: ShiftTypeKey,
-  opts?: { shiftOnly?: boolean },
+  opts?: { shiftOnly?: boolean; shiftLabel?: string; shiftStart?: string; shiftEnd?: string },
 ) {
   return apiJson<{ ok: boolean; assignedBranchName: string }>(`/smena/assign/${employeeId}`, {
     method: "PATCH",
@@ -107,6 +144,9 @@ export function assignSmenaBranch(
       assignedBranchId,
       shiftType,
       shiftOnly: opts?.shiftOnly,
+      shiftLabel: opts?.shiftLabel,
+      shiftStart: opts?.shiftStart,
+      shiftEnd: opts?.shiftEnd,
     }),
   });
 }

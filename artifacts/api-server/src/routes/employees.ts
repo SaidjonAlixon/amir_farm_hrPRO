@@ -611,6 +611,8 @@ router.patch("/employees/:id", requireAuth, async (req: AuthRequest, res): Promi
     "longitude",
     "shiftType",
     "shiftLabel",
+    "shiftStart",
+    "shiftEnd",
     "photoUrl",
     "employmentStatus",
     "userId",
@@ -619,7 +621,8 @@ router.patch("/employees/:id", requireAuth, async (req: AuthRequest, res): Promi
   for (const key of allowed) {
     if (req.body[key] === undefined) continue;
     if (key === "fullName" && !canEditIdentity) continue;
-    if ((key === "shiftType" || key === "shiftLabel") && !canEditShift) continue;
+    if ((key === "shiftType" || key === "shiftLabel" || key === "shiftStart" || key === "shiftEnd") && !canEditShift)
+      continue;
     if (key === "employmentStatus") {
       if (!canEditStatus) continue;
       if (!VALID_EMP_STATUS.has(req.body[key])) {

@@ -108,6 +108,7 @@ export function isPharmacyShiftStaff(userRole?: string | null, orgRole?: string 
 }
 
 export function isValidShiftType(raw?: string | null): raw is ShiftTypeKey {
+  if (raw === "custom") return true;
   return ALL_SHIFTS.some((s) => s.key === raw);
 }
 
@@ -123,11 +124,6 @@ export function normalizeShiftType(raw?: string | null): ShiftTypeKey {
 
 export function shiftWindow(shiftType?: string | null): ShiftWindow {
   const key = normalizeShiftType(shiftType);
-  if (key === "two") return SHIFT_TWO;
-  if (key === "remote") return SHIFT_REMOTE;
-  if (key === "flexible") return SHIFT_FLEXIBLE;
-  if (key === "alternate") return SHIFT_ALTERNATE;
-  if (key === "alternate_night") return SHIFT_ALTERNATE_NIGHT;
   if (key === "custom") {
     return {
       key: "custom",
@@ -136,10 +132,20 @@ export function shiftWindow(shiftType?: string | null): ShiftWindow {
       start: "09:00",
       end: "18:00",
       warnHm: "08:45",
-      warnText: "Maxsus smena — mudir belgilagan holat.",
+      warnText: "Maxsus smena — admin belgilagan vaqt.",
     };
   }
-  return SHIFT_ONE;
+  try {
+    const { getCachedShiftWindow } = require("./shift-catalog") as typeof import("./shift-catalog");
+    return getCachedShiftWindow(key);
+  } catch {
+    if (key === "two") return SHIFT_TWO;
+    if (key === "remote") return SHIFT_REMOTE;
+    if (key === "flexible") return SHIFT_FLEXIBLE;
+    if (key === "alternate") return SHIFT_ALTERNATE;
+    if (key === "alternate_night") return SHIFT_ALTERNATE_NIGHT;
+    return SHIFT_ONE;
+  }
 }
 
 export function shiftHoursLabel(shiftType?: string | null, shiftLabel?: string | null): string {

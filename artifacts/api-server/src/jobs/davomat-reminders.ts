@@ -9,7 +9,8 @@ import {
 import { logger } from "../lib/logger";
 import { notifyAllActiveUsers } from "../lib/notify";
 import { DAVOMAT_GEOFENCE_METERS } from "../routes/davomat";
-import { isPharmacyShiftStaff, shiftWindow, hmToMinutes } from "../lib/shift-hours";
+import { resolveEmployeeShift } from "../lib/shift-catalog";
+import { hmToMinutes, isPharmacyShiftStaff } from "../lib/shift-hours";
 
 const FIVE_MIN_MS = 5 * 60 * 1000;
 
@@ -87,6 +88,9 @@ async function loadLinkedStaff() {
       fullName: employeesTable.fullName,
       orgRole: employeesTable.orgRole,
       shiftType: employeesTable.shiftType,
+      shiftLabel: employeesTable.shiftLabel,
+      shiftStart: employeesTable.shiftStart,
+      shiftEnd: employeesTable.shiftEnd,
     })
     .from(employeesTable)
     .where(
@@ -122,7 +126,7 @@ export async function remindPharmacyShiftWarn(): Promise<number> {
     if (!e.userId) continue;
     const role = roles.get(e.userId) || "";
     if (!isPharmacyShiftStaff(role, e.orgRole)) continue;
-    const w = shiftWindow(e.shiftType);
+    const w = resolveEmployeeShift(e);
     const warnMin = hmToMinutes(w.warnHm);
     if (mins < warnMin || mins >= warnMin + 15) continue;
 
@@ -162,7 +166,7 @@ export async function remindDavomatCheckIn(): Promise<number> {
     const role = roles.get(e.userId) || "";
     const pharmacy = isPharmacyShiftStaff(role, e.orgRole);
     if (pharmacy) {
-      const start = hmToMinutes(shiftWindow(e.shiftType).start);
+      const start = hmToMinutes(resolveEmployeeShift(e).start);
       if (mins < start || mins > start + 150) continue;
     } else if (mins < 8 * 60 + 30 || mins > 11 * 60) {
       continue;
@@ -181,7 +185,7 @@ export async function remindDavomatCheckIn(): Promise<number> {
     if (rec?.checkInAt) continue;
     if (await alreadyNotifiedToday(e.userId, "davomat_checkin", since)) continue;
 
-    const w = pharmacy ? shiftWindow(e.shiftType) : null;
+    const w = pharmacy ? resolveEmployeeShift(e) : null;
     await db.insert(notificationsTable).values({
       userId: e.userId,
       text: w
@@ -208,6 +212,9 @@ export async function remindDavomatCheckOut(): Promise<number> {
       fullName: employeesTable.fullName,
       orgRole: employeesTable.orgRole,
       shiftType: employeesTable.shiftType,
+      shiftLabel: employeesTable.shiftLabel,
+      shiftStart: employeesTable.shiftStart,
+      shiftEnd: employeesTable.shiftEnd,
     })
     .from(attendanceRecordsTable)
     .innerJoin(employeesTable, eq(employeesTable.id, attendanceRecordsTable.employeeId))
@@ -226,7 +233,7 @@ export async function remindDavomatCheckOut(): Promise<number> {
     const pharmacy = isPharmacyShiftStaff(null, r.orgRole);
     let inWindow = mins >= 17 * 60 + 30 && mins <= 21 * 60;
     if (pharmacy) {
-      const end = hmToMinutes(shiftWindow(r.shiftType).end);
+      const end = hmToMinutes(resolveEmployeeShift(r).end);
       inWindow = mins >= end - 60 && mins <= end + 30;
     }
     if (!inWindow) continue;

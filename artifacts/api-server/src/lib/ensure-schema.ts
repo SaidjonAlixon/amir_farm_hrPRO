@@ -947,6 +947,31 @@ CREATE TABLE IF NOT EXISTS job_roles (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS job_roles_slug_uidx ON job_roles (slug);
 ALTER TABLE job_roles ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS shift_templates (
+  key TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  hint TEXT NOT NULL DEFAULT '',
+  start_hm TEXT NOT NULL,
+  end_hm TEXT NOT NULL,
+  overnight BOOLEAN NOT NULL DEFAULT FALSE,
+  skip_geofence BOOLEAN NOT NULL DEFAULT FALSE,
+  warn_hm TEXT NOT NULL,
+  warn_text TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO shift_templates (key, label, hint, start_hm, end_hm, overnight, skip_geofence, warn_hm, warn_text, sort_order)
+VALUES
+  ('one', '1-smena', 'Kunduzgi smena', '08:00', '17:00', FALSE, FALSE, '07:45', '1-smenaga tezroq harakat qiling.', 0),
+  ('two', '2-smena', 'Kechki smena', '18:00', '23:45', FALSE, FALSE, '17:45', '2-smenaga tezroq harakat qiling.', 1),
+  ('remote', 'Masofadan', 'Masofadan ishlaydiganlar', '09:00', '18:00', FALSE, TRUE, '08:45', 'Masofadan ish: GPS majburiy emas.', 2),
+  ('flexible', 'Erkin grafik', 'Erkin ish grafigi', '09:00', '21:00', FALSE, TRUE, '08:45', 'Erkin grafik: moslashuvchan vaqt.', 3),
+  ('alternate', 'Kun ora', 'Kun ora ishlaydigan xodimlar', '08:00', '17:00', FALSE, FALSE, '07:45', 'Kun ora smena.', 4),
+  ('alternate_night', 'Kun ora (kechki)', 'Kechki 17:00–08:00', '17:00', '08:00', TRUE, FALSE, '16:45', 'Kun ora kechki smena.', 5)
+ON CONFLICT (key) DO NOTHING;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS shift_start TEXT;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS shift_end TEXT;
     `);
   } catch (err) {
     logger.error({ err }, "Failed to ensure DB schema");
@@ -966,5 +991,12 @@ ALTER TABLE job_roles ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT F
     await syncMoliyaDepartmentAssignments();
   } catch (err) {
     logger.warn({ err }, "Moliya department sync skipped");
+  }
+  try {
+    const { reloadShiftCatalog } = await import("./shift-catalog");
+    await reloadShiftCatalog();
+    logger.info("Shift catalog loaded from DB");
+  } catch (err) {
+    logger.warn({ err }, "Shift catalog load skipped");
   }
 }

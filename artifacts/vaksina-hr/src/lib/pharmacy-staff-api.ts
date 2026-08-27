@@ -162,6 +162,8 @@ export type EmployeeProfilePatch = {
   phone?: string;
   shiftType?: string;
   shiftLabel?: string;
+  shiftStart?: string;
+  shiftEnd?: string;
   employmentStatus?: string;
 };
 

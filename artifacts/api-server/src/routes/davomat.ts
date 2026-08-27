@@ -23,12 +23,11 @@ import {
 } from "../lib/office-location";
 import { setSessionCookie } from "../lib/session";
 import {
-  hoursForStaff,
-  isPharmacyShiftStaff,
-  shiftHoursLabel,
-  shiftSkipsGeofence,
-  shiftWindow,
-} from "../lib/shift-hours";
+  hoursForEmployee,
+  resolveEmployeeShift,
+  shiftHoursLabelForEmployee,
+  shiftSkipsGeofenceForEmployee,
+} from "../lib/shift-catalog";
 
 const router: IRouter = Router();
 
@@ -231,6 +230,9 @@ async function loadActiveEmployees(filters: {
       userId: employeesTable.userId,
       orgRole: employeesTable.orgRole,
       shiftType: employeesTable.shiftType,
+      shiftLabel: employeesTable.shiftLabel,
+      shiftStart: employeesTable.shiftStart,
+      shiftEnd: employeesTable.shiftEnd,
     })
     .from(employeesTable)
     .leftJoin(departmentsTable, eq(employeesTable.departmentId, departmentsTable.id));
@@ -330,7 +332,7 @@ function buildReport(
         leave += 1;
         continue;
       }
-      const m = computeMetrics(date, rec.checkInAt, rec.checkOutAt, rec.status, hoursForStaff(e.orgRole, e.shiftType));
+      const m = computeMetrics(date, rec.checkInAt, rec.checkOutAt, rec.status, hoursForEmployee(e));
       if (m.status === "late") {
         late += 1;
         lateList.push(e.fullName);
@@ -408,7 +410,7 @@ function buildReport(
             recordId: rec.id,
           };
         }
-        const m = computeMetrics(date, rec.checkInAt, rec.checkOutAt, rec.status, hoursForStaff(e.orgRole, e.shiftType));
+        const m = computeMetrics(date, rec.checkInAt, rec.checkOutAt, rec.status, hoursForEmployee(e));
         return {
           date,
           ...m,
@@ -669,6 +671,9 @@ type WorkplaceEmp = {
   reportsToId: number | null;
   assignedBranchId: number | null;
   shiftType: string | null;
+  shiftLabel?: string | null;
+  shiftStart?: string | null;
+  shiftEnd?: string | null;
 };
 
 const BRANCH_USER_ROLES = new Set(["mudir", "farmasevt", "stajyor"]);
@@ -813,6 +818,9 @@ async function findEmployeeByUserId(userId: number): Promise<WorkplaceEmp | null
       reportsToId: employeesTable.reportsToId,
       assignedBranchId: employeesTable.assignedBranchId,
       shiftType: employeesTable.shiftType,
+      shiftLabel: employeesTable.shiftLabel,
+      shiftStart: employeesTable.shiftStart,
+      shiftEnd: employeesTable.shiftEnd,
     })
     .from(employeesTable)
     .where(eq(employeesTable.userId, userId))
@@ -847,6 +855,9 @@ async function ensureEmployeeForUser(user: {
       reportsToId: employeesTable.reportsToId,
       assignedBranchId: employeesTable.assignedBranchId,
       shiftType: employeesTable.shiftType,
+      shiftLabel: employeesTable.shiftLabel,
+      shiftStart: employeesTable.shiftStart,
+      shiftEnd: employeesTable.shiftEnd,
       employmentStatus: employeesTable.employmentStatus,
     })
     .from(employeesTable);
@@ -880,6 +891,9 @@ async function ensureEmployeeForUser(user: {
       reportsToId: byName.reportsToId,
       assignedBranchId: byName.assignedBranchId,
       shiftType: byName.shiftType,
+      shiftLabel: byName.shiftLabel,
+      shiftStart: byName.shiftStart,
+      shiftEnd: byName.shiftEnd,
     };
   }
 
@@ -974,7 +988,7 @@ async function geoGate(
   const resolved = await resolveDavomatPoint(emp, userRole);
   if (!resolved.ok) {
     // Masofadan / erkin grafik — filial GPS yo‘q bo‘lsa ham davomatga ruxsat
-    if (shiftSkipsGeofence(emp.shiftType)) {
+    if (shiftSkipsGeofenceForEmployee(emp)) {
       const office = await getOfficeLocation();
       return {
         ok: true,
@@ -983,7 +997,7 @@ async function geoGate(
         point: {
           latitude: office.latitude,
           longitude: office.longitude,
-          label: shiftHoursLabel(emp.shiftType),
+          label: shiftHoursLabelForEmployee(emp),
           kind: "office",
         },
       };
@@ -991,12 +1005,12 @@ async function geoGate(
     return resolved;
   }
   const point = resolved.point;
-  if (shiftSkipsGeofence(emp.shiftType)) {
+  if (shiftSkipsGeofenceForEmployee(emp)) {
     return {
       ok: true,
       distanceMeters: 0,
       effectiveRadius: 0,
-      point: { ...point, label: `${point.label} · ${shiftHoursLabel(emp.shiftType)}` },
+      point: { ...point, label: `${point.label} · ${shiftHoursLabelForEmployee(emp)}` },
     };
   }
   const distanceMeters = haversineMeters(latitude, longitude, point.latitude, point.longitude);
@@ -1066,7 +1080,7 @@ async function applyFacePunch(opts: {
   | PunchFail
 > {
   const { emp, latitude, longitude, distanceMeters, faceProfileId, action } = opts;
-  const hours = hoursForStaff(emp.orgRole, emp.shiftType);
+  const hours = hoursForEmployee(emp);
   const workDate = todayTashkent();
   const now = new Date();
   const dateFilter = and(
@@ -1274,13 +1288,13 @@ router.get("/davomat/me/workplace", requireAuth, async (req: AuthRequest, res): 
     const emp = await ensureEmployeeForUser(user);
     const resolved = await resolveDavomatPoint(emp, user.role);
     const office = await getOfficeLocation();
-    const skipGps = shiftSkipsGeofence(emp.shiftType);
+    const skipGps = shiftSkipsGeofenceForEmployee(emp);
     const point = resolved.ok
       ? resolved.point
       : {
           latitude: office.latitude,
           longitude: office.longitude,
-          label: skipGps ? shiftHoursLabel(emp.shiftType) : office.label,
+          label: skipGps ? shiftHoursLabelForEmployee(emp) : office.label,
           kind: "office" as const,
         };
     const workDate = todayTashkent();
@@ -1307,7 +1321,7 @@ router.get("/davomat/me/workplace", requireAuth, async (req: AuthRequest, res): 
       gpsError: resolved.ok || skipGps ? null : String(resolved.body.error || "Filial GPS yo‘q"),
       workDate,
       shift: (() => {
-        const w = shiftWindow(emp.shiftType);
+        const w = resolveEmployeeShift(emp);
         return {
           type: w.key,
           label: w.label,
@@ -1316,7 +1330,7 @@ router.get("/davomat/me/workplace", requireAuth, async (req: AuthRequest, res): 
           end: w.end,
           overnight: Boolean(w.overnight),
           skipGeofence: Boolean(w.skipGeofence),
-          hoursNote: shiftHoursLabel(emp.shiftType),
+          hoursNote: shiftHoursLabelForEmployee(emp),
           warnHm: w.warnHm,
           warnText: w.warnText,
         };
@@ -1327,7 +1341,7 @@ router.get("/davomat/me/workplace", requireAuth, async (req: AuthRequest, res): 
         location: point.label,
         latitude: point.latitude,
         longitude: point.longitude,
-        hasGps: resolved.ok || shiftSkipsGeofence(emp.shiftType),
+        hasGps: resolved.ok || shiftSkipsGeofenceForEmployee(emp),
         shiftType: emp.shiftType,
       },
       today: rec

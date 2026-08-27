@@ -58,6 +58,10 @@ export const employeesTable = pgTable("employees", {
   assignedBranchId: integer("assigned_branch_id"),
   /** Mudir belgilagan maxsus holat matni */
   shiftLabel: text("shift_label"),
+  /** Maxsus smena boshlanishi (HH:MM) */
+  shiftStart: text("shift_start"),
+  /** Maxsus smena tugashi (HH:MM) */
+  shiftEnd: text("shift_end"),
   /** working | new | dismissed | need_hire | searching | no_manager */
   employmentStatus: text("employment_status").notNull().default("working"),
   /** Login foydalanuvchisi (users.id) — mudir/koordinator bog‘lash */
