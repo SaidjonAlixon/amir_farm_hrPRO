@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
-import { db, employeesTable } from "@workspace/db";
+import { db, employeesTable, employeeBranchDayOverridesTable } from "@workspace/db";
 import { requireAuth, type AuthRequest } from "../middlewares/auth";
 import { isHrRole } from "../lib/roles";
 import { notifyUser } from "../lib/notify";
@@ -13,6 +13,7 @@ import {
   shiftHoursLabelForEmployee,
 } from "../lib/shift-catalog";
 import { isPharmacyShiftStaff, isValidShiftType, normalizeShiftType, type ShiftTypeKey } from "../lib/shift-hours";
+import { listDayBranchOverrides } from "../lib/branch-day-override";
 
 const router: IRouter = Router();
 
@@ -469,6 +470,190 @@ router.patch("/smena/assign/:employeeId", requireAuth, async (req: AuthRequest, 
     assignedBranchName: loc,
     shiftType: body.shiftType || target.shiftType,
   });
+});
+
+function todayTashkentYmd(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tashkent",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function addDaysYmd(ymd: string, delta: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y!, m! - 1, d! + delta));
+  return dt.toISOString().slice(0, 10);
+}
+
+function isYmd(s: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+/** Kelgusi kunlar uchun vaqtinchalik filiallar (xodim tanlanganda) */
+router.get("/smena/day-branch/:employeeId", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  const role = req.userRole || "";
+  const me = await empByUserId(req.userId!);
+  if (!me) {
+    res.status(400).json({ error: "Xodim kartochkasi yo‘q" });
+    return;
+  }
+  const targetId = Number(req.params.employeeId);
+  const target = await empById(targetId);
+  if (!target) {
+    res.status(404).json({ error: "Xodim topilmadi" });
+    return;
+  }
+  const scope = role === "koordinator" ? await coordinatorScopeIds(me) : null;
+  if (!canAssignTarget({ role, me, target, scope }) && target.userId !== req.userId) {
+    res.status(403).json({ error: "Ko‘rish huquqi yo‘q" });
+    return;
+  }
+  const from = todayTashkentYmd();
+  const to = addDaysYmd(from, 30);
+  const items = await listDayBranchOverrides(targetId, from, to);
+  res.json({
+    employeeId: targetId,
+    homeBranchId: target.assignedBranchId || (target.orgRole === MANAGER_ORG ? target.id : target.reportsToId),
+    homeBranchName:
+      (await listBranches()).find(
+        (b) =>
+          b.id ===
+          (target.assignedBranchId || (target.orgRole === MANAGER_ORG ? target.id : target.reportsToId)),
+      )?.name || target.location || null,
+    items,
+  });
+});
+
+/**
+ * Faqat belgilangan kunda boshqa filialda davomat.
+ * Asosiy assigned_branch_id o‘zgarmaydi — ertasi kun uy filialiga qaytadi.
+ */
+router.put("/smena/day-branch/:employeeId", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  const role = req.userRole || "";
+  const me = await empByUserId(req.userId!);
+  if (!me) {
+    res.status(400).json({ error: "Xodim kartochkasi yo‘q" });
+    return;
+  }
+  const targetId = Number(req.params.employeeId);
+  const target = await empById(targetId);
+  if (!target) {
+    res.status(404).json({ error: "Xodim topilmadi" });
+    return;
+  }
+  const scope = role === "koordinator" ? await coordinatorScopeIds(me) : null;
+  if (!canAssignTarget({ role, me, target, scope })) {
+    res.status(403).json({ error: "Bu xodimga kunlik filial belgilash huquqi yo‘q" });
+    return;
+  }
+
+  const body = req.body as { workDate?: string; branchId?: number; note?: string };
+  const workDate = String(body.workDate || "").trim();
+  const branchId = Number(body.branchId);
+  if (!isYmd(workDate)) {
+    res.status(400).json({ error: "Sana YYYY-MM-DD formatida kerak", code: "bad_date" });
+    return;
+  }
+  const today = todayTashkentYmd();
+  if (workDate < today) {
+    res.status(400).json({ error: "O‘tgan kun uchun belgilab bo‘lmaydi", code: "past_date" });
+    return;
+  }
+  if (!Number.isFinite(branchId)) {
+    res.status(400).json({ error: "Filial tanlang" });
+    return;
+  }
+  const branch = await empById(branchId);
+  if (!branch || branch.orgRole !== MANAGER_ORG || !hasGps(branch)) {
+    res.status(400).json({ error: "Filial GPS yo‘q yoki mudir emas" });
+    return;
+  }
+
+  const branchName = (branch.location || "").split("|")[0].trim() || branch.fullName;
+  const [existing] = await db
+    .select({ id: employeeBranchDayOverridesTable.id })
+    .from(employeeBranchDayOverridesTable)
+    .where(
+      and(
+        eq(employeeBranchDayOverridesTable.employeeId, targetId),
+        eq(employeeBranchDayOverridesTable.workDate, workDate),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(employeeBranchDayOverridesTable)
+      .set({
+        branchId,
+        note: body.note?.trim() || null,
+        createdById: me.userId,
+        updatedAt: new Date(),
+      })
+      .where(eq(employeeBranchDayOverridesTable.id, existing.id));
+  } else {
+    await db.insert(employeeBranchDayOverridesTable).values({
+      employeeId: targetId,
+      branchId,
+      workDate,
+      note: body.note?.trim() || null,
+      createdById: me.userId,
+    });
+  }
+
+  if (target.userId) {
+    await notifyUser({
+      userId: target.userId,
+      text: `${target.fullName}: ${workDate} kuni vaqtinchalik «${branchName}» filialida davomat qilasiz. Keyin o‘z filialingizga qaytasiz.`,
+      type: "smena_day_branch",
+      linkUrl: "/davomat-face",
+    });
+  }
+
+  res.json({
+    ok: true,
+    employeeId: targetId,
+    workDate,
+    branchId,
+    branchName,
+    message: `${workDate} kuni «${branchName}» da davomat qabul qilinadi. Keyin uy filialiga qaytadi.`,
+  });
+});
+
+router.delete("/smena/day-branch/:employeeId", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  const role = req.userRole || "";
+  const me = await empByUserId(req.userId!);
+  if (!me) {
+    res.status(400).json({ error: "Xodim kartochkasi yo‘q" });
+    return;
+  }
+  const targetId = Number(req.params.employeeId);
+  const target = await empById(targetId);
+  if (!target) {
+    res.status(404).json({ error: "Xodim topilmadi" });
+    return;
+  }
+  const scope = role === "koordinator" ? await coordinatorScopeIds(me) : null;
+  if (!canAssignTarget({ role, me, target, scope })) {
+    res.status(403).json({ error: "O‘chirish huquqi yo‘q" });
+    return;
+  }
+  const workDate = String(req.query.workDate || req.body?.workDate || "").trim();
+  if (!isYmd(workDate)) {
+    res.status(400).json({ error: "workDate kerak (YYYY-MM-DD)" });
+    return;
+  }
+  await db
+    .delete(employeeBranchDayOverridesTable)
+    .where(
+      and(
+        eq(employeeBranchDayOverridesTable.employeeId, targetId),
+        eq(employeeBranchDayOverridesTable.workDate, workDate),
+      ),
+    );
+  res.json({ ok: true, employeeId: targetId, workDate });
 });
 
 export default router;

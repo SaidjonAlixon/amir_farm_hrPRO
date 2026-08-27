@@ -21,6 +21,7 @@ import {
   DEFAULT_OFFICE_LNG as DAVOMAT_SITE_LNG,
   DEFAULT_OFFICE_DMS as DAVOMAT_SITE_LABEL,
 } from "../lib/office-location";
+import { getDayBranchOverride } from "../lib/branch-day-override";
 import {
   hoursForEmployee,
   resolveEmployeeShift,
@@ -713,8 +714,12 @@ function coordsFromEmp(row: {
   return gpsFromLocationField(row.location);
 }
 
-async function resolveDavomatPoint(emp: WorkplaceEmp, userRole: string): Promise<
-  | { ok: true; point: DavomatPoint }
+async function resolveDavomatPoint(
+  emp: WorkplaceEmp,
+  userRole: string,
+  workDate?: string,
+): Promise<
+  | { ok: true; point: DavomatPoint; temporary?: boolean }
   | { ok: false; status: number; body: Record<string, unknown> }
 > {
   if (!usesBranchDavomat(userRole, emp.orgRole)) {
@@ -726,6 +731,21 @@ async function resolveDavomatPoint(emp: WorkplaceEmp, userRole: string): Promise
         longitude: office.longitude,
         label: office.label,
         kind: "office",
+      },
+    };
+  }
+
+  const day = workDate || todayTashkent();
+  const dayOverride = await getDayBranchOverride(emp.id, day);
+  if (dayOverride) {
+    return {
+      ok: true,
+      temporary: true,
+      point: {
+        latitude: dayOverride.latitude,
+        longitude: dayOverride.longitude,
+        label: `${dayOverride.branchName} · vaqtinchalik (${day})`,
+        kind: "branch",
       },
     };
   }
@@ -1350,6 +1370,14 @@ router.get("/davomat/me/workplace", requireAuth, async (req: AuthRequest, res): 
         hasGps: resolved.ok || shiftSkipsGeofenceForEmployee(emp),
         shiftType: emp.shiftType,
       },
+      temporaryBranch:
+        resolved.ok && resolved.temporary
+          ? {
+              active: true,
+              workDate,
+              label: resolved.point.label,
+            }
+          : null,
       today: rec
         ? {
             checkIn: formatHm(rec.checkInAt),

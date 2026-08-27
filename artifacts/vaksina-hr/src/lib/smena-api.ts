@@ -151,6 +151,47 @@ export function assignSmenaBranch(
   });
 }
 
+export type DayBranchOverrideItem = {
+  id: number;
+  employeeId: number;
+  branchId: number;
+  workDate: string;
+  note: string | null;
+  branchName: string;
+};
+
+export function fetchDayBranchOverrides(employeeId: number) {
+  return apiJson<{
+    employeeId: number;
+    homeBranchId: number | null;
+    homeBranchName: string | null;
+    items: DayBranchOverrideItem[];
+  }>(`/smena/day-branch/${employeeId}`);
+}
+
+export function saveDayBranchOverride(
+  employeeId: number,
+  body: { workDate: string; branchId: number; note?: string },
+) {
+  return apiJson<{
+    ok: boolean;
+    workDate: string;
+    branchId: number;
+    branchName: string;
+    message: string;
+  }>(`/smena/day-branch/${employeeId}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteDayBranchOverride(employeeId: number, workDate: string) {
+  return apiJson<{ ok: boolean }>(
+    `/smena/day-branch/${employeeId}?workDate=${encodeURIComponent(workDate)}`,
+    { method: "DELETE" },
+  );
+}
+
 export function shiftTypeShort(type?: string | null): string {
   if (type === "two") return "2-smena";
   if (type === "remote") return "Masofadan";

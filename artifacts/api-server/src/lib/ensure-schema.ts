@@ -972,6 +972,23 @@ VALUES
 ON CONFLICT (key) DO NOTHING;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS shift_start TEXT;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS shift_end TEXT;
+
+CREATE TABLE IF NOT EXISTS employee_branch_day_overrides (
+  id SERIAL PRIMARY KEY,
+  employee_id INTEGER NOT NULL,
+  branch_id INTEGER NOT NULL,
+  work_date TEXT NOT NULL,
+  note TEXT,
+  created_by_id INTEGER,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS emp_branch_day_overrides_emp_date_uidx
+  ON employee_branch_day_overrides (employee_id, work_date);
+CREATE INDEX IF NOT EXISTS emp_branch_day_overrides_date_idx
+  ON employee_branch_day_overrides (work_date);
+CREATE INDEX IF NOT EXISTS emp_branch_day_overrides_branch_idx
+  ON employee_branch_day_overrides (branch_id);
     `);
   } catch (err) {
     logger.error({ err }, "Failed to ensure DB schema");

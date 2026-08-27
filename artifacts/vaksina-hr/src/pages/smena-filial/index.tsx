@@ -8,11 +8,15 @@ import { useToast } from "../../hooks/use-toast";
 import { cn } from "../../lib/utils";
 import {
   assignSmenaBranch,
+  deleteDayBranchOverride,
+  fetchDayBranchOverrides,
   fetchSmenaMe,
   fetchShiftTemplates,
+  saveDayBranchOverride,
   saveMySmena,
   saveShiftTemplate,
   shiftTypeShort,
+  type DayBranchOverrideItem,
   type ShiftTemplate,
   type ShiftTypeKey,
   type SmenaAssignable,
@@ -197,6 +201,16 @@ export default function SmenaFilialPage() {
   const [customStart, setCustomStart] = useState("09:00");
   const [customEnd, setCustomEnd] = useState("18:00");
   const [highlightTemplate, setHighlightTemplate] = useState<ShiftTypeKey | null>(null);
+  const [dayDate, setDayDate] = useState(() =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Tashkent",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date()),
+  );
+  const [dayBranchId, setDayBranchId] = useState<number | null>(null);
+  const [dayBranchQ, setDayBranchQ] = useState("");
 
   const shiftOptions: ShiftOption[] = useMemo(() => {
     if (data?.shifts?.length) return data.shifts as ShiftOption[];
@@ -272,6 +286,45 @@ export default function SmenaFilialPage() {
     window.setTimeout(() => setHighlightTemplate(null), 3000);
   }
 
+  const dayOverridesQ = useQuery({
+    queryKey: ["smena-day-branch", pickedPersonId],
+    queryFn: () => fetchDayBranchOverrides(pickedPersonId!),
+    enabled: Boolean(pickedPersonId),
+  });
+
+  const dayBranches = useMemo(() => {
+    const list = data?.branches ?? [];
+    const s = dayBranchQ.trim().toLowerCase();
+    if (!s) return list;
+    return list.filter((b) => `${b.name} ${b.managerName}`.toLowerCase().includes(s));
+  }, [data?.branches, dayBranchQ]);
+
+  const saveDayBranch = useMutation({
+    mutationFn: () => {
+      if (!pickedPersonId || !dayBranchId) throw new Error("Sana va filial tanlang");
+      return saveDayBranchOverride(pickedPersonId, {
+        workDate: dayDate,
+        branchId: dayBranchId,
+      });
+    },
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["smena-day-branch", pickedPersonId] });
+      toast({ title: "Kunlik filial saqlandi", description: r.message });
+      setDayBranchId(null);
+      setDayBranchQ("");
+    },
+    onError: (e: Error) => toast({ title: "Saqlanmadi", description: e.message, variant: "destructive" }),
+  });
+
+  const removeDayBranch = useMutation({
+    mutationFn: (workDate: string) => deleteDayBranchOverride(pickedPersonId!, workDate),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["smena-day-branch", pickedPersonId] });
+      toast({ title: "Kunlik filial o‘chirildi" });
+    },
+    onError: (e: Error) => toast({ title: "O‘chirilmadi", description: e.message, variant: "destructive" }),
+  });
+
   const saveTemplate = useMutation({
     mutationFn: (p: { key: string; start: string; end: string }) => saveShiftTemplate(p.key, { start: p.start, end: p.end }),
     onSuccess: () => {
@@ -333,6 +386,8 @@ export default function SmenaFilialPage() {
     selectShift(st);
     setPickedBranchId(p.assignedBranchId);
     setBranchQ("");
+    setDayBranchId(null);
+    setDayBranchQ("");
     if (st === "custom") {
       setCustomLabel(p.shiftLabel?.replace(/:.*$/, "").trim() || p.position || "Maxsus");
       setCustomStart(p.shiftStart || "09:00");
@@ -350,6 +405,8 @@ export default function SmenaFilialPage() {
     setCustomStart("09:00");
     setCustomEnd("18:00");
     setBranchQ("");
+    setDayBranchId(null);
+    setDayBranchQ("");
   }
 
   function onSaveTeam() {
@@ -637,13 +694,107 @@ export default function SmenaFilialPage() {
                   </p>
                 )}
 
+                <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
+                  <div>
+                    <p className="text-sm font-semibold text-amber-950">Kunlik boshqa filial</p>
+                    <p className="mt-0.5 text-[11px] leading-snug text-amber-900/80">
+                      Faqat tanlangan kunda shu filialda davomat qabul qilinadi. Keyin yana o‘z filialiga (
+                      {dayOverridesQ.data?.homeBranchName || picked.assignedBranchName || "asosiy"}) qaytadi.
+                      Doimiy filial o‘zgarmaydi.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-[11px] font-medium text-amber-950">Sana</label>
+                      <Input
+                        type="date"
+                        value={dayDate}
+                        onChange={(e) => setDayDate(e.target.value)}
+                        className="h-10 rounded-xl bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-medium text-amber-950">
+                        Filial {dayBranchId ? `· ${(data?.branches ?? []).find((b) => b.id === dayBranchId)?.name || ""}` : ""}
+                      </label>
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                        <Input
+                          value={dayBranchQ}
+                          onChange={(e) => setDayBranchQ(e.target.value)}
+                          placeholder="Filial qidirish…"
+                          className="h-10 rounded-xl bg-white pl-9"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="max-h-28 overflow-y-auto rounded-xl border border-amber-100 bg-white">
+                    {dayBranches.map((b) => {
+                      const on = dayBranchId === b.id;
+                      return (
+                        <button
+                          key={b.id}
+                          type="button"
+                          onClick={() => setDayBranchId(b.id)}
+                          className={cn(
+                            "flex w-full items-center justify-between px-3 py-2 text-left text-sm",
+                            on ? "bg-amber-100 font-medium text-amber-950" : "hover:bg-slate-50",
+                          )}
+                        >
+                          {b.name}
+                          {on ? <Check className="h-4 w-4" /> : null}
+                        </button>
+                      );
+                    })}
+                    {dayBranches.length === 0 ? (
+                      <p className="px-3 py-3 text-center text-xs text-slate-400">Filial topilmadi</p>
+                    ) : null}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 w-full border-amber-300 bg-white text-amber-950 hover:bg-amber-100"
+                    disabled={!dayBranchId || saveDayBranch.isPending}
+                    onClick={() => saveDayBranch.mutate()}
+                  >
+                    <MapPin className="mr-1.5 h-4 w-4" />
+                    {saveDayBranch.isPending ? "Saqlanmoqda…" : "Shu kunga vaqtinchalik filialni saqlash"}
+                  </Button>
+
+                  {(dayOverridesQ.data?.items?.length ?? 0) > 0 ? (
+                    <div className="space-y-1.5 border-t border-amber-200/80 pt-2">
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-amber-900/70">
+                        Rejalashtirilgan kunlar
+                      </p>
+                      {(dayOverridesQ.data?.items as DayBranchOverrideItem[]).map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-xs text-slate-800"
+                        >
+                          <span>
+                            <b>{item.workDate}</b> · {item.branchName}
+                          </span>
+                          <button
+                            type="button"
+                            className="rounded px-1.5 py-0.5 text-rose-600 hover:bg-rose-50"
+                            disabled={removeDayBranch.isPending}
+                            onClick={() => removeDayBranch.mutate(item.workDate)}
+                          >
+                            O‘chirish
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
                 <Button
                   type="button"
                   className="h-11 w-full rounded-xl bg-[#0b3a5c] text-base font-medium hover:bg-[#0a3350]"
                   disabled={saveAssign.isPending}
                   onClick={onSaveTeam}
                 >
-                  {saveAssign.isPending ? "Saqlanmoqda…" : "Xodimga saqlash"}
+                  {saveAssign.isPending ? "Saqlanmoqda…" : "Doimiy smena/filialni saqlash"}
                 </Button>
               </section>
             ) : (
