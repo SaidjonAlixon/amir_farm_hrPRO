@@ -24,7 +24,7 @@ import {
   invalidateFaceCache,
   parseFaceDescriptor,
 } from "../lib/face-match";
-import { inspectEnrollFaceWithAi, rejectIfFaceTakenByAi } from "../lib/face-ai-verify";
+import { inspectEnrollFaceWithAi, rejectIfFaceTakenByAi, isFaceAiEnabled } from "../lib/face-ai-verify";
 import { issueFaceChallenge } from "../lib/face-identity";
 import { clientKey, rateLimitAllow } from "../lib/rate-limit";
 import { ROLE_LABEL_UZ } from "../lib/telegram";
@@ -224,38 +224,47 @@ router.post("/auth/face/enroll", requireAuth, async (req: AuthRequest, res): Pro
     return;
   }
 
-  const nearest = await findDuplicateEnrollHits(descriptors.slice(0, 1), userId);
-  if (nearest.length) {
-    logger.info(
-      {
-        event: "face_enroll",
-        ok: false,
-        code: "face_already_taken",
-        userId,
-        dist: Number(nearest[0]!.dist.toFixed(4)),
-        threshold: FACE_ENROLL_BLOCK_MAX,
-      },
-      "face enroll blocked duplicate",
-    );
-    res.status(409).json({
-      error: "Bu yuz allaqachon boshqa accountga biriktirilgan",
-      code: "face_already_taken",
-    });
-    return;
-  }
-
-  const similar = await findNearestFaces(descriptors[0]!, {
+  const softNeighbors = await findNearestFaces(descriptors[0]!, {
     excludeUserId: userId,
-    limit: 3,
+    limit: 5,
+    maxDist: 0.42,
   });
-  const taken = await rejectIfFaceTakenByAi({
-    liveSnapshot: snapshot,
-    neighborProfileIds: similar.map((h) => h.id),
-  });
-  if (!taken.ok) {
-    logger.info({ event: "face_enroll", ok: false, code: taken.code, userId }, "face enroll AI duplicate");
-    res.status(409).json({ error: taken.error, code: taken.code });
-    return;
+
+  if (isFaceAiEnabled()) {
+    const taken = await rejectIfFaceTakenByAi({
+      liveSnapshot: snapshot,
+      neighbors: softNeighbors,
+    });
+    if (!taken.ok) {
+      logger.info({ event: "face_enroll", ok: false, code: taken.code, userId }, "face enroll AI duplicate");
+      res.status(409).json({
+        error: taken.error,
+        code: taken.code,
+        ownerName: taken.ownerName,
+      });
+      return;
+    }
+  } else {
+    const nearest = await findDuplicateEnrollHits(descriptors.slice(0, 1), userId);
+    const hard = nearest.filter((h) => h.dist <= Math.min(FACE_ENROLL_BLOCK_MAX, 0.30));
+    if (hard.length) {
+      logger.info(
+        {
+          event: "face_enroll",
+          ok: false,
+          code: "face_already_taken",
+          userId,
+          dist: Number(hard[0]!.dist.toFixed(4)),
+          threshold: 0.3,
+        },
+        "face enroll blocked duplicate (local)",
+      );
+      res.status(409).json({
+        error: "Bu yuz allaqachon boshqa accountga biriktirilgan",
+        code: "face_already_taken",
+      });
+      return;
+    }
   }
 
   let photoUrl = "";

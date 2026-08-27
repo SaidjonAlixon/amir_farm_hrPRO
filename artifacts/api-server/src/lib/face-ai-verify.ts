@@ -99,21 +99,33 @@ async function openaiJson(
 const COMPARE_SYSTEM =
   "You are a biometric identity judge. Decide a FACT, not a probability score. " +
   "Image 1 is the enrolled employee. Image 2 is a live camera photo. " +
-  "Ignore hijab, glasses frames, clothing, background, makeup, compression. " +
-  "Use eyes, eyelids, nose, philtrum, jaw, moles, ear shape. " +
+  "Ignore hijab, glasses frames, clothing, background, makeup, compression, lighting. " +
+  "Use eyes, eyelids, nose bridge, philtrum, jawline, moles, ear shape, eyebrow spacing. " +
   "verdict must be exactly one of: same | different | unknown. " +
-  "same = it is the same human. different = another human. unknown = cannot tell (blur, angle, occlusion). " +
+  "same = clearly the identical human. different = another human (even if similar age/ethnicity). " +
+  "unknown = cannot tell (blur, angle, occlusion). " +
   "samePerson is true only when verdict is same. uncertain is true only when verdict is unknown. " +
-  "Never mark same if it might be a different person. " +
+  "If there is any reasonable doubt it is a different person, verdict must be different or unknown — never same. " +
+  "Similar looking people are different. " +
+  'JSON: {"verdict":"same"|"different"|"unknown","samePerson":boolean,"uncertain":boolean}.';
+
+const ENROLL_DUP_COMPARE_SYSTEM =
+  "You check if a NEW enrollment selfie is already registered to ANOTHER employee. " +
+  "Image 1 = existing enrolled Face ID. Image 2 = new live selfie. " +
+  "Mark same ONLY if you are certain it is the identical person. " +
+  "Similar face, same gender, same ethnicity, or family resemblance is NOT enough — use different. " +
+  "If unsure (blur, angle, lighting), use unknown. " +
+  "False duplicate blocks hurt real employees — prefer unknown/different when not sure. " +
   'JSON: {"verdict":"same"|"different"|"unknown","samePerson":boolean,"uncertain":boolean}.';
 
 async function callOpenAiFaceCompare(
   enrolledDataUrl: string,
   liveDataUrl: string,
+  systemPrompt: string = COMPARE_SYSTEM,
 ): Promise<FaceAiCompareResult> {
   const parsed = parseFaceAiPayload(
     await openaiJson([
-      { role: "system", content: COMPARE_SYSTEM },
+      { role: "system", content: systemPrompt },
       {
         role: "user",
         content: [
@@ -201,25 +213,77 @@ async function loadFacePhotos(
 
 export async function rejectIfFaceTakenByAi(opts: {
   liveSnapshot?: unknown;
-  neighborProfileIds: number[];
-}): Promise<{ ok: true } | { ok: false; error: string; code: string }> {
-  if (!isFaceAiEnabled() || !opts.neighborProfileIds.length) return { ok: true };
+  /** Faqat haqiqatan yaqin embeddinglar — uzoq “eng yaqin 3 ta” emas */
+  neighbors: Array<{ id: number; userId: number; dist: number }>;
+}): Promise<
+  | { ok: true }
+  | { ok: false; error: string; code: string; ownerUserId?: number; ownerName?: string }
+> {
+  if (!isFaceAiEnabled() || !opts.neighbors.length) return { ok: true };
   const live = toDataUrl(typeof opts.liveSnapshot === "string" ? opts.liveSnapshot : null);
   if (!live) return { ok: true };
-  const photos = await loadFacePhotos(opts.neighborProfileIds.slice(0, 4));
-  for (const [id, photo] of photos) {
+
+  /** Embedding juda uzoq bo‘lsa AI ga umuman bermaymiz (soxta “same” oldini olish). */
+  const close = opts.neighbors
+    .filter((n) => Number.isFinite(n.dist) && n.dist <= 0.42)
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, 3);
+  if (!close.length) return { ok: true };
+
+  const photos = await loadFacePhotos(close.map((n) => n.id));
+  const { db, usersTable } = await import("@workspace/db");
+  const { eq } = await import("drizzle-orm");
+
+  for (const n of close) {
+    const photo = photos.get(n.id);
+    if (!photo) continue;
     try {
-      const ai = await callOpenAiFaceCompare(photo.dataUrl, live);
+      const ai = await callOpenAiFaceCompare(photo.dataUrl, live, ENROLL_DUP_COMPARE_SYSTEM);
+      /** Faqat aniq same — unknown/different enrollni to‘xtatmaydi */
       if (ai.samePerson && !ai.uncertain) {
-        logger.info({ event: "face_ai_enroll_dup", profileId: id }, "face AI enroll duplicate");
+        /** Lokal ham yetarli yaqin bo‘lishi shart — AI yolg‘iz block qilmasin */
+        if (n.dist > 0.38) {
+          logger.info(
+            {
+              event: "face_ai_enroll_dup",
+              skipped: true,
+              profileId: n.id,
+              dist: Number(n.dist.toFixed(4)),
+            },
+            "AI same but embedding too far — allow enroll",
+          );
+          continue;
+        }
+        const [owner] = await db
+          .select({ fullName: usersTable.fullName })
+          .from(usersTable)
+          .where(eq(usersTable.id, n.userId))
+          .limit(1);
+        const ownerName = owner?.fullName ?? undefined;
+        logger.info(
+          {
+            event: "face_ai_enroll_dup",
+            profileId: n.id,
+            userId: n.userId,
+            dist: Number(n.dist.toFixed(4)),
+          },
+          "face AI enroll duplicate confirmed",
+        );
         return {
           ok: false,
-          error: "Bu yuz allaqachon boshqa xodim Face ID siga biriktirilgan.",
+          error: ownerName
+            ? `Bu yuz allaqachon boshqa xodimga biriktirilgan: ${ownerName}`
+            : "Bu yuz allaqachon boshqa xodim Face ID siga biriktirilgan.",
           code: "face_already_taken",
+          ownerUserId: n.userId,
+          ownerName,
         };
       }
     } catch (err) {
-      logger.warn({ event: "face_ai_enroll_dup", err: err instanceof Error ? err.message : "error" }, "face AI dup check skipped");
+      logger.warn(
+        { event: "face_ai_enroll_dup", err: err instanceof Error ? err.message : "error" },
+        "face AI dup check skipped",
+      );
     }
   }
   return { ok: true };
