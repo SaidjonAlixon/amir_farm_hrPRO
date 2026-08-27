@@ -1,0 +1,70 @@
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# compiled output
+dist
+tmp
+out-tsc
+*.tsbuildinfo
+.expo
+.expo-shared
+
+# dependencies
+node_modules
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# misc
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
+
+# System Files
+.DS_Store
+Thumbs.db
+
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md
+
+# Replit
+.cache/
+.local/
+
+# Vercel local link only — do NOT ignore `.vercel/output` (Build Output API).
+# Ignoring `.vercel/*` made Vercel skip Build Output API and demand `public`.
+.vercel/project.json
+.vercel/README.txt
+
+# Local file uploads (when BLOB_READ_WRITE_TOKEN is not set)
+uploads/
+artifacts/api-server/uploads/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Vite intermediate (copied into .vercel/output / public by build:vercel)
+# Note: bare `dist` above already covers most packages; keep explicit path for clarity.
+artifacts/vaksina-hr/dist/
+
+.vercel
+.env*

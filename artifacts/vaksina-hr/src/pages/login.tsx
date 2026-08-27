@@ -1,0 +1,181 @@
+import React, { useState } from 'react';
+import { useLogin } from '@workspace/api-client-react';
+import { useAuth } from '../contexts/AuthContext';
+import { useLocation } from 'wouter';
+import { Eye, EyeOff } from 'lucide-react';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '../components/ui/card';
+import { useToast } from '../hooks/use-toast';
+import type { User } from '@workspace/api-client-react';
+import { compactCredential } from '../lib/utils';
+
+export default function Login() {
+  const [login, setLogin] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const { mutate, isPending } = useLogin();
+  const { switchToUser } = useAuth();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+
+  const goAfterLogin = (user: User) => {
+    switchToUser(user);
+    setLocation(user.role === 'stajyor' ? '/kirish' : '/dashboard');
+  };
+
+  const handleLogin = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const loginTrim = compactCredential(login);
+    const passwordTrim = compactCredential(password);
+    if (loginTrim !== login) setLogin(loginTrim);
+    if (passwordTrim !== password) setPassword(passwordTrim);
+    if (!loginTrim || !passwordTrim) return;
+
+    mutate({ data: { login: loginTrim, password: passwordTrim } }, {
+      onSuccess: (data) => {
+        goAfterLogin(data.user);
+      },
+      onError: (err) => {
+        const data = (err as { data?: { error?: string }; message?: string } | undefined)?.data;
+        const msg =
+          (typeof data?.error === 'string' && data.error) ||
+          (typeof (err as { message?: string })?.message === 'string'
+            ? String((err as { message?: string }).message).replace(/^HTTP \d+ [^:]+:\s*/, '')
+            : null) ||
+          "Login yoki parol noto'g'ri";
+        toast({
+          title: 'Xatolik',
+          description: msg,
+          variant: 'destructive',
+        });
+      }
+    });
+  };
+
+  const demoAccounts = [
+    { label: "Admin", login: "admin", pass: "admin123" },
+    { label: "Direktor", login: "director1", pass: "pass123" },
+    { label: "Koordinator", login: "koordinator1", pass: "pass123" },
+    { label: "HR Direktor", login: "hrdirektor1", pass: "pass123" },
+    { label: "HR Menejer", login: "hrmenejer1", pass: "pass123" },
+    { label: "Mudir", login: "mudir1", pass: "pass123" },
+    { label: "Farmasevt", login: "farmasevt1", pass: "pass123" },
+  ];
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <div className="w-full max-w-md">
+        <div className="mb-8 text-center">
+          <img
+            src={`${import.meta.env.BASE_URL}logo.png`}
+            alt="AMIR FARM HR"
+            className="mx-auto h-44 w-auto max-w-full rounded-2xl object-contain sm:h-56"
+          />
+        </div>
+
+        <Card className="border-t-4 border-t-primary shadow-xl">
+          <CardHeader className="text-center">
+            <CardTitle>Tizimga kirish</CardTitle>
+            <CardDescription>
+              Faqat login va parol. Face ID — kirganingizdan keyin Davomat bo‘limida.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="login">Login</Label>
+                <Input 
+                  id="login" 
+                  value={login} 
+                  onChange={(e) => setLogin(compactCredential(e.target.value))}
+                  onBlur={() => setLogin((v) => compactCredential(v))}
+                  onPaste={(e) => {
+                    e.preventDefault();
+                    setLogin(compactCredential(e.clipboardData.getData('text')));
+                  }}
+                  placeholder="Loginni kiriting"
+                  autoComplete="username"
+                  required 
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Parol</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(compactCredential(e.target.value))}
+                    onBlur={() => setPassword((v) => compactCredential(v))}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      setPassword(compactCredential(e.clipboardData.getData('text')));
+                    }}
+                    placeholder="Parolni kiriting"
+                    className="pr-10"
+                    autoComplete="current-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? 'Parolni yashirish' : "Parolni ko'rsatish"}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              <Button type="submit" className="w-full" disabled={isPending}>
+                {isPending ? 'Kirilmoqda...' : 'Kirish'}
+              </Button>
+            </form>
+          </CardContent>
+          
+          {import.meta.env.DEV && (
+            <CardFooter className="flex flex-col items-stretch pt-0 border-t mt-6 bg-gray-50/50">
+              <div className="text-sm font-medium text-center text-gray-500 py-4">
+                Demo akkauntlar (tanlang):
+              </div>
+              <div className="grid grid-cols-2 gap-2 pb-4">
+                {demoAccounts.map((acc) => (
+                  <Button
+                    key={acc.login}
+                    variant="outline"
+                    size="sm"
+                    className="justify-start text-xs h-8"
+                    onClick={() => {
+                      setLogin(acc.login);
+                      setPassword(acc.pass);
+                      setTimeout(() => {
+                        mutate(
+                          { data: { login: acc.login, password: acc.pass } },
+                          {
+                            onSuccess: (data) => {
+                              switchToUser(data.user);
+                              setLocation(
+                                data.user.role === 'stajyor' ? '/kirish' : '/dashboard',
+                              );
+                            },
+                          },
+                        );
+                      }, 100);
+                    }}
+                  >
+                    {acc.label}
+                  </Button>
+                ))}
+              </div>
+            </CardFooter>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,2065 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: VAKSINA HR - Kadrlarni boshqaruv dasturi
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Autentifikatsiya
+  - name: departments
+    description: Bo'limlar
+  - name: users
+    description: Foydalanuvchilar
+  - name: requests
+    description: Zayavkalar
+  - name: vacancies
+    description: Vakansiyalar
+  - name: candidates
+    description: Nomzodlar
+  - name: phone-interviews
+    description: Telefon suhbatlari
+  - name: online-interviews
+    description: Onlayn suhbatlar
+  - name: preboarding
+    description: Pre-boarding
+  - name: offline-interviews
+    description: Offline suhbatlar
+  - name: offers
+    description: Job offerlar
+  - name: internships
+    description: Stajirovkalar
+  - name: employees
+    description: Faol xodimlar
+  - name: notifications
+    description: Bildirishnomalar
+  - name: dashboard
+    description: Boshqaruv paneli statistikasi
+  - name: tasks
+    description: Vazifalar doskasi
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  # --- AUTH ---
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Tizimga kirish
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Muvaffaqiyatli kirish
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Noto'g'ri ma'lumotlar
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Joriy foydalanuvchi ma'lumotlari
+      responses:
+        "200":
+          description: Foydalanuvchi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Tizimdan chiqish
+      responses:
+        "200":
+          description: Chiqildi
+
+  # --- DEPARTMENTS ---
+  /departments:
+    get:
+      operationId: getDepartments
+      tags: [departments]
+      summary: Barcha bo'limlar ro'yxati
+      responses:
+        "200":
+          description: Bo'limlar
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Department"
+    post:
+      operationId: createDepartment
+      tags: [departments]
+      summary: Yangi bo'lim yaratish
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepartmentInput"
+      responses:
+        "201":
+          description: Yaratildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Department"
+
+  /departments/{id}:
+    get:
+      operationId: getDepartment
+      tags: [departments]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "200":
+          description: Bo'lim
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Department"
+    patch:
+      operationId: updateDepartment
+      tags: [departments]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepartmentUpdate"
+      responses:
+        "200":
+          description: Yangilandi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Department"
+    delete:
+      operationId: deleteDepartment
+      tags: [departments]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "204":
+          description: O'chirildi
+
+  # --- USERS ---
+  /users:
+    get:
+      operationId: getUsers
+      tags: [users]
+      summary: Barcha foydalanuvchilar
+      parameters:
+        - { name: role, in: query, schema: { type: string } }
+        - { name: departmentId, in: query, schema: { type: number } }
+        - { name: search, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Foydalanuvchilar
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      tags: [users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserInput"
+      responses:
+        "201":
+          description: Yaratildi (temporaryPassword — bir marta ko'rsatiladi)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateUserResult"
+
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [users]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "200":
+          description: Foydalanuvchi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    patch:
+      operationId: updateUser
+      tags: [users]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Yangilandi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "204":
+          description: O'chirildi
+
+  # --- REQUESTS (Zayavkalar) ---
+  /requests:
+    get:
+      operationId: getRequests
+      tags: [requests]
+      summary: Barcha zayavkalar
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: departmentId, in: query, schema: { type: number } }
+        - { name: assignedTo, in: query, schema: { type: number } }
+        - { name: priority, in: query, schema: { type: string } }
+        - { name: search, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Zayavkalar
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Request"
+    post:
+      operationId: createRequest
+      tags: [requests]
+      summary: Yangi zayavka berish
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestInput"
+      responses:
+        "201":
+          description: Zayavka yaratildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Request"
+
+  /requests/{id}:
+    get:
+      operationId: getRequest
+      tags: [requests]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "200":
+          description: Zayavka
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Request"
+    patch:
+      operationId: updateRequest
+      tags: [requests]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestUpdate"
+      responses:
+        "200":
+          description: Yangilandi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Request"
+    delete:
+      operationId: deleteRequest
+      tags: [requests]
+      summary: Arizani o'chirish (faqat HR va Direktor)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "204":
+          description: O'chirildi
+        "403":
+          description: Ruxsat yo'q
+
+  /requests/{id}/assign:
+    post:
+      operationId: assignRequest
+      tags: [requests]
+      summary: Zayavkani o'ziga olish
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignInput"
+      responses:
+        "200":
+          description: Biriktirildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Request"
+
+  /requests/{id}/approve:
+    post:
+      operationId: approveRequest
+      tags: [requests]
+      summary: HR tasdiqlaydi, rekruter biriktiradi va faol ish o'rni yaratadi
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveRequestInput"
+      responses:
+        "201":
+          description: Tasdiqlandi va ish o'rni yaratildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApproveRequestResult"
+        "400":
+          description: Noto'g'ri so'rov
+        "403":
+          description: Ruxsat yo'q
+
+  # --- VACANCIES (E'lonlar) ---
+  /vacancies:
+    get:
+      operationId: getVacancies
+      tags: [vacancies]
+      summary: Barcha vakansiyalar
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: requestId, in: query, schema: { type: number } }
+        - { name: search, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Vakansiyalar
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Vacancy"
+    post:
+      operationId: createVacancy
+      tags: [vacancies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VacancyInput"
+      responses:
+        "201":
+          description: Yaratildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vacancy"
+
+  /vacancies/{id}:
+    get:
+      operationId: getVacancy
+      tags: [vacancies]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "200":
+          description: Vakansiya
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vacancy"
+    patch:
+      operationId: updateVacancy
+      tags: [vacancies]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VacancyUpdate"
+      responses:
+        "200":
+          description: Yangilandi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vacancy"
+    delete:
+      operationId: deleteVacancy
+      tags: [vacancies]
+      summary: Ish o'rnini o'chirish (faqat HR va Direktor)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "204":
+          description: O'chirildi
+        "403":
+          description: Ruxsat yo'q
+
+  /vacancies/{id}/publish:
+    post:
+      operationId: publishVacancy
+      tags: [vacancies]
+      summary: Vakansiyani kanallarga joylashtirish
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishVacancyInput"
+      responses:
+        "200":
+          description: Joylashtirildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vacancy"
+
+  # --- CANDIDATES (Nomzodlar) ---
+  /candidates:
+    get:
+      operationId: getCandidates
+      tags: [candidates]
+      summary: Barcha nomzodlar
+      parameters:
+        - { name: vacancyId, in: query, schema: { type: number } }
+        - { name: stage, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: recruiterId, in: query, schema: { type: number } }
+        - { name: search, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Nomzodlar
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Candidate"
+    post:
+      operationId: createCandidate
+      tags: [candidates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CandidateInput"
+      responses:
+        "201":
+          description: Nomzod yaratildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Candidate"
+
+  /candidates/{id}:
+    get:
+      operationId: getCandidate
+      tags: [candidates]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "200":
+          description: Nomzod
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Candidate"
+    patch:
+      operationId: updateCandidate
+      tags: [candidates]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CandidateUpdate"
+      responses:
+        "200":
+          description: Yangilandi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Candidate"
+    delete:
+      operationId: deleteCandidate
+      tags: [candidates]
+      summary: Nomzodni o'chirish (faqat HR va Direktor)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "204":
+          description: O'chirildi
+        "403":
+          description: Ruxsat yo'q
+
+  /candidates/{id}/pipeline:
+    get:
+      operationId: getCandidatePipeline
+      tags: [candidates]
+      summary: Nomzod pipeline bosqichlari to'liq ma'lumoti
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "200":
+          description: Pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CandidatePipeline"
+
+  # --- PHONE INTERVIEWS ---
+  /phone-interviews:
+    get:
+      operationId: getPhoneInterviews
+      tags: [phone-interviews]
+      parameters:
+        - { name: candidateId, in: query, schema: { type: number } }
+        - { name: recruiterId, in: query, schema: { type: number } }
+      responses:
+        "200":
+          description: Telefon suhbatlari
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PhoneInterview"
+    post:
+      operationId: createPhoneInterview
+      tags: [phone-interviews]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PhoneInterviewInput"
+      responses:
+        "201":
+          description: Yaratildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhoneInterview"
+
+  /phone-interviews/{id}:
+    get:
+      operationId: getPhoneInterview
+      tags: [phone-interviews]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "200":
+          description: Telefon suhbat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhoneInterview"
+    patch:
+      operationId: updatePhoneInterview
+      tags: [phone-interviews]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PhoneInterviewUpdate"
+      responses:
+        "200":
+          description: Yangilandi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhoneInterview"
+
+  # --- ONLINE INTERVIEWS ---
+  /online-interviews:
+    get:
+      operationId: getOnlineInterviews
+      tags: [online-interviews]
+      parameters:
+        - { name: candidateId, in: query, schema: { type: number } }
+      responses:
+        "200":
+          description: Onlayn suhbatlar
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OnlineInterview"
+    post:
+      operationId: createOnlineInterview
+      tags: [online-interviews]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnlineInterviewInput"
+      responses:
+        "201":
+          description: Yaratildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnlineInterview"
+
+  /online-interviews/{id}:
+    get:
+      operationId: getOnlineInterview
+      tags: [online-interviews]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "200":
+          description: Onlayn suhbat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnlineInterview"
+    patch:
+      operationId: updateOnlineInterview
+      tags: [online-interviews]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnlineInterviewUpdate"
+      responses:
+        "200":
+          description: Yangilandi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnlineInterview"
+
+  # --- PREBOARDING ---
+  /preboarding:
+    get:
+      operationId: getPreboardings
+      tags: [preboarding]
+      parameters:
+        - { name: candidateId, in: query, schema: { type: number } }
+      responses:
+        "200":
+          description: Pre-boardinglar
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Preboarding"
+    post:
+      operationId: createPreboarding
+      tags: [preboarding]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreboardingInput"
+      responses:
+        "201":
+          description: Yaratildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Preboarding"
+
+  /preboarding/{id}:
+    patch:
+      operationId: updatePreboarding
+      tags: [preboarding]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreboardingUpdate"
+      responses:
+        "200":
+          description: Yangilandi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Preboarding"
+
+  # --- OFFLINE INTERVIEWS ---
+  /offline-interviews:
+    get:
+      operationId: getOfflineInterviews
+      tags: [offline-interviews]
+      parameters:
+        - { name: candidateId, in: query, schema: { type: number } }
+        - { name: hrId, in: query, schema: { type: number } }
+        - { name: trainerId, in: query, schema: { type: number } }
+        - { name: dateFrom, in: query, schema: { type: string } }
+        - { name: dateTo, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Offline suhbatlar
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OfflineInterview"
+    post:
+      operationId: createOfflineInterview
+      tags: [offline-interviews]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OfflineInterviewInput"
+      responses:
+        "201":
+          description: Yaratildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfflineInterview"
+
+  /offline-interviews/{id}:
+    get:
+      operationId: getOfflineInterview
+      tags: [offline-interviews]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "200":
+          description: Offline suhbat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfflineInterview"
+    patch:
+      operationId: updateOfflineInterview
+      tags: [offline-interviews]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OfflineInterviewUpdate"
+      responses:
+        "200":
+          description: Yangilandi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfflineInterview"
+
+  # --- OFFERS ---
+  /offers:
+    get:
+      operationId: getOffers
+      tags: [offers]
+      parameters:
+        - { name: candidateId, in: query, schema: { type: number } }
+        - { name: status, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Offerlar
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Offer"
+    post:
+      operationId: createOffer
+      tags: [offers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OfferInput"
+      responses:
+        "201":
+          description: Yaratildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Offer"
+
+  /offers/{id}:
+    get:
+      operationId: getOffer
+      tags: [offers]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "200":
+          description: Offer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Offer"
+    patch:
+      operationId: updateOffer
+      tags: [offers]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OfferUpdate"
+      responses:
+        "200":
+          description: Yangilandi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Offer"
+
+  # --- INTERNSHIPS (Stajirovka) ---
+  /internships:
+    get:
+      operationId: getInternships
+      tags: [internships]
+      parameters:
+        - { name: employeeId, in: query, schema: { type: number } }
+        - { name: trainerId, in: query, schema: { type: number } }
+        - { name: status, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Stajirovkalar
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Internship"
+    post:
+      operationId: createInternship
+      tags: [internships]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InternshipInput"
+      responses:
+        "201":
+          description: Yaratildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Internship"
+
+  /internships/{id}:
+    get:
+      operationId: getInternship
+      tags: [internships]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "200":
+          description: Stajirovka
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Internship"
+    patch:
+      operationId: updateInternship
+      tags: [internships]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InternshipUpdate"
+      responses:
+        "200":
+          description: Yangilandi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Internship"
+
+  # --- EMPLOYEES (Faol xodimlar) ---
+  /employees:
+    get:
+      operationId: getEmployees
+      tags: [employees]
+      parameters:
+        - { name: departmentId, in: query, schema: { type: number } }
+        - { name: mentorId, in: query, schema: { type: number } }
+        - { name: search, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Xodimlar
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Employee"
+    post:
+      operationId: createEmployee
+      tags: [employees]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeeInput"
+      responses:
+        "201":
+          description: Yaratildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+
+  /employees/{id}:
+    get:
+      operationId: getEmployee
+      tags: [employees]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "200":
+          description: Xodim
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+    patch:
+      operationId: updateEmployee
+      tags: [employees]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeeUpdate"
+      responses:
+        "200":
+          description: Yangilandi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+
+  # --- VAZIFALAR (Tasks board) ---
+  /tasks:
+    get:
+      operationId: getTasks
+      tags: [tasks]
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: assigneeKind, in: query, schema: { type: string, enum: [user, employee] } }
+        - { name: assigneeId, in: query, schema: { type: number } }
+        - { name: board, in: query, schema: { type: string, enum: [active, all] } }
+      responses:
+        "200":
+          description: Vazifalar ro'yxati
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Vazifa"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VazifaInput"
+      responses:
+        "201":
+          description: Yaratildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vazifa"
+
+  /tasks/{id}:
+    get:
+      operationId: getTask
+      tags: [tasks]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "200":
+          description: Vazifa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vazifa"
+    patch:
+      operationId: updateTask
+      tags: [tasks]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VazifaUpdate"
+      responses:
+        "200":
+          description: Yangilandi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vazifa"
+    delete:
+      operationId: deleteTask
+      tags: [tasks]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "204":
+          description: O'chirildi
+
+  # --- NOTIFICATIONS ---
+  /notifications:
+    get:
+      operationId: getNotifications
+      tags: [notifications]
+      parameters:
+        - { name: unreadOnly, in: query, schema: { type: boolean } }
+      responses:
+        "200":
+          description: Bildirishnomalar
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+
+  /notifications/{id}/read:
+    patch:
+      operationId: markNotificationRead
+      tags: [notifications]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: number } }
+      responses:
+        "200":
+          description: O'qildi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+
+  /notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      tags: [notifications]
+      responses:
+        "200":
+          description: Barchasi o'qildi
+
+  # --- DASHBOARD ---
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Umumiy statistika
+      responses:
+        "200":
+          description: Statistika
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /dashboard/pipeline-overview:
+    get:
+      operationId: getPipelineOverview
+      tags: [dashboard]
+      summary: Pipeline bosqichlari bo'yicha nomzodlar soni
+      responses:
+        "200":
+          description: Pipeline overview
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PipelineStageCount"
+
+  /dashboard/recent-activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: So'nggi faoliyat lenti
+      responses:
+        "200":
+          description: Faoliyat
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
+  /dashboard/channel-stats:
+    get:
+      operationId: getChannelStats
+      tags: [dashboard]
+      summary: Kanallar bo'yicha samaradorlik
+      responses:
+        "200":
+          description: Kanal statistikasi
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChannelStat"
+
+  /dashboard/recruiter-tasks:
+    get:
+      operationId: getRecruiterTasks
+      tags: [dashboard]
+      summary: Rekruter uchun bugungi vazifalar
+      responses:
+        "200":
+          description: Vazifalar
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecruiterTask"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    # --- AUTH ---
+    LoginInput:
+      type: object
+      required: [login, password]
+      properties:
+        login: { type: string }
+        password: { type: string }
+
+    AuthResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+
+    # --- USER ---
+    User:
+      type: object
+      required: [id, fullName, role, status, createdAt]
+      properties:
+        id: { type: number }
+        fullName: { type: string }
+        role:
+          type: string
+          enum: [admin, recruiter, hr, hr_direktor, hr_auditor, hr_menejer, trainer, mentor, director, department_head, mudir, koordinator, texnik, ombor, farmasevt]
+        departmentId: { type: ["integer", "null"] }
+        departmentName: { type: ["string", "null"] }
+        login: { type: string }
+        phone: { type: ["string", "null"] }
+        status:
+          type: string
+          enum: [active, inactive]
+        createdAt: { type: string }
+
+    UserInput:
+      type: object
+      required: [fullName, role]
+      properties:
+        fullName: { type: string }
+        role: { type: string }
+        departmentId: { type: ["integer", "null"] }
+        login: { type: string }
+        password: { type: string }
+        phone: { type: ["string", "null"] }
+        status: { type: string }
+
+    CreateUserResult:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            temporaryPassword: { type: string }
+
+    UserUpdate:
+      type: object
+      properties:
+        fullName: { type: string }
+        role: { type: string }
+        departmentId: { type: ["integer", "null"] }
+        phone: { type: ["string", "null"] }
+        status: { type: string }
+
+    # --- DEPARTMENT ---
+    Department:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id: { type: number }
+        name: { type: string }
+        headId: { type: ["integer", "null"] }
+        headName: { type: ["string", "null"] }
+        createdAt: { type: string }
+
+    DepartmentInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        headId: { type: ["integer", "null"] }
+
+    DepartmentUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        headId: { type: ["integer", "null"] }
+
+    # --- REQUEST ---
+    Request:
+      type: object
+      required: [id, departmentId, position, count, status, priority, createdAt]
+      properties:
+        id: { type: number }
+        departmentId: { type: number }
+        departmentName: { type: ["string", "null"] }
+        position: { type: string }
+        count: { type: number }
+        description: { type: ["string", "null"] }
+        requirements: { type: ["string", "null"] }
+        salaryRange: { type: ["string", "null"] }
+        deadline: { type: ["string", "null"] }
+        reason: { type: ["string", "null"] }
+        city: { type: ["string", "null"] }
+        district: { type: ["string", "null"] }
+        priority:
+          type: string
+          enum: [urgent, normal]
+        status:
+          type: string
+          enum: [submitted, reviewing, accepted, announced, closed]
+        assignedToId: { type: ["integer", "null"] }
+        assignedToName: { type: ["string", "null"] }
+        assignedAt: { type: ["string", "null"] }
+        createdById: { type: ["integer", "null"] }
+        createdByName: { type: ["string", "null"] }
+        createdAt: { type: string }
+        vacancyId: { type: ["integer", "null"] }
+        vacancyCreatedAt: { type: ["string", "null"] }
+        vacancyAssignedAt: { type: ["string", "null"] }
+        vacancyAcceptedAt: { type: ["string", "null"] }
+        vacancyPublishedAt: { type: ["string", "null"] }
+
+    RequestInput:
+      type: object
+      required: [departmentId, position, count, priority, city, district]
+      properties:
+        departmentId: { type: number }
+        position: { type: string }
+        count: { type: number }
+        description: { type: string }
+        requirements: { type: string }
+        salaryRange: { type: string }
+        deadline: { type: string }
+        reason: { type: string }
+        city: { type: string }
+        district: { type: string }
+        priority: { type: string }
+
+    RequestUpdate:
+      type: object
+      properties:
+        position: { type: string }
+        count: { type: number }
+        description: { type: string }
+        requirements: { type: string }
+        salaryRange: { type: string }
+        deadline: { type: string }
+        reason: { type: string }
+        priority: { type: string }
+        status: { type: string }
+
+    AssignInput:
+      type: object
+      required: [userId]
+      properties:
+        userId: { type: number }
+
+    ApproveRequestInput:
+      type: object
+      required: [recruiterId]
+      properties:
+        recruiterId: { type: number }
+        deadline: { type: string }
+
+    ApproveRequestVacancy:
+      type: object
+      required: [id, title, status, createdAt]
+      properties:
+        id: { type: number }
+        title: { type: string }
+        status: { type: string }
+        recruiterId: { type: ["integer", "null"] }
+        createdAt: { type: string }
+        deadline: { type: ["string", "null"] }
+
+    ApproveRequestResult:
+      type: object
+      required: [request, vacancy]
+      properties:
+        request:
+          $ref: "#/components/schemas/Request"
+        vacancy:
+          $ref: "#/components/schemas/ApproveRequestVacancy"
+
+    # --- VACANCY ---
+    Vacancy:
+      type: object
+      required: [id, requestId, title, status, createdAt]
+      properties:
+        id: { type: number }
+        requestId: { type: number }
+        title: { type: string }
+        description: { type: ["string", "null"] }
+        salaryRange: { type: ["string", "null"] }
+        location: { type: ["string", "null"] }
+        schedule: { type: ["string", "null"] }
+        benefits: { type: ["string", "null"] }
+        channels:
+          type: array
+          items:
+            $ref: "#/components/schemas/VacancyChannel"
+        status:
+          type: string
+          enum: [draft, published, closed]
+        recruiterId: { type: ["integer", "null"] }
+        recruiterName: { type: ["string", "null"] }
+        deadline: { type: ["string", "null"] }
+        requestPosition: { type: ["string", "null"] }
+        departmentName: { type: ["string", "null"] }
+        requestCount: { type: ["number", "null"] }
+        requestRequirements: { type: ["string", "null"] }
+        requestDescription: { type: ["string", "null"] }
+        requestPriority: { type: ["string", "null"] }
+        assignedAt: { type: ["string", "null"] }
+        acceptedAt: { type: ["string", "null"] }
+        publishedAt: { type: ["string", "null"] }
+        createdAt: { type: string }
+        candidatesCount: { type: number }
+
+    VacancyChannel:
+      type: object
+      required: [channelId, channelName, channelIcon]
+      properties:
+        channelId: { type: number }
+        channelName: { type: string }
+        channelIcon: { type: string }
+        publishedAt: { type: ["string", "null"] }
+        views: { type: number }
+        applications: { type: number }
+
+    VacancyInput:
+      type: object
+      required: [requestId, title, recruiterId, deadline]
+      properties:
+        requestId: { type: number }
+        title: { type: string }
+        description: { type: string }
+        salaryRange: { type: string }
+        location: { type: string }
+        schedule: { type: string }
+        benefits: { type: string }
+        recruiterId: { type: number }
+        deadline: { type: string }
+
+    VacancyUpdate:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        salaryRange: { type: string }
+        location: { type: string }
+        schedule: { type: string }
+        benefits: { type: string }
+        status: { type: string }
+        recruiterId: { type: number }
+        deadline: { type: string }
+
+    PublishVacancyInput:
+      type: object
+      required: [channelIds]
+      properties:
+        channelIds:
+          type: array
+          items:
+            type: number
+
+    # --- CANDIDATE ---
+    Candidate:
+      type: object
+      required: [id, fullName, phone, vacancyId, stage, createdAt]
+      properties:
+        id: { type: number }
+        fullName: { type: string }
+        birthDate: { type: ["string", "null"] }
+        phone: { type: string }
+        address: { type: ["string", "null"] }
+        photoUrl: { type: ["string", "null"] }
+        education: { type: ["string", "null"] }
+        experience: { type: ["string", "null"] }
+        expectedSalary: { type: ["string", "null"] }
+        notes: { type: ["string", "null"] }
+        vacancyId: { type: number }
+        vacancyTitle: { type: ["string", "null"] }
+        recruiterId: { type: ["integer", "null"] }
+        recruiterName: { type: ["string", "null"] }
+        stage:
+          type: string
+          enum: [phone_interview, online_interview, preboarding, offline_interview, final_decision, offer, documents, internship, hired]
+        status:
+          type: string
+          enum: [active, rejected, hired]
+        createdAt: { type: string }
+
+    CandidateInput:
+      type: object
+      required: [fullName, phone, vacancyId]
+      properties:
+        fullName: { type: string }
+        birthDate: { type: string }
+        phone: { type: string }
+        address: { type: string }
+        education: { type: string }
+        experience: { type: string }
+        expectedSalary: { type: string }
+        notes: { type: string }
+        vacancyId: { type: number }
+        recruiterId: { type: number }
+
+    CandidateUpdate:
+      type: object
+      properties:
+        fullName: { type: string }
+        birthDate: { type: string }
+        phone: { type: string }
+        address: { type: string }
+        education: { type: string }
+        experience: { type: string }
+        expectedSalary: { type: string }
+        notes: { type: string }
+        stage: { type: string }
+        status: { type: string }
+        recruiterId: { type: number }
+
+    CandidatePipeline:
+      type: object
+      required: [candidateId, stages]
+      properties:
+        candidateId: { type: number }
+        candidateName: { type: string }
+        currentStage: { type: string }
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineStage"
+
+    PipelineStage:
+      type: object
+      required: [key, label, status]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        status:
+          type: string
+          enum: [pending, in_progress, completed, failed]
+        completedAt: { type: ["string", "null"] }
+        details: { type: ["string", "null"] }
+
+    # --- PHONE INTERVIEW ---
+    PhoneInterview:
+      type: object
+      required: [id, candidateId, status, createdAt]
+      properties:
+        id: { type: number }
+        candidateId: { type: number }
+        candidateName: { type: ["string", "null"] }
+        recruiterId: { type: ["integer", "null"] }
+        recruiterName: { type: ["string", "null"] }
+        interviewDate: { type: ["string", "null"] }
+        notes: { type: ["string", "null"] }
+        status:
+          type: string
+          enum: [suitable, not_suitable, pending]
+        rejectReason: { type: ["string", "null"] }
+        createdAt: { type: string }
+
+    PhoneInterviewInput:
+      type: object
+      required: [candidateId]
+      properties:
+        candidateId: { type: number }
+        recruiterId: { type: number }
+        interviewDate: { type: string }
+        notes: { type: string }
+        status: { type: string }
+        rejectReason: { type: string }
+
+    PhoneInterviewUpdate:
+      type: object
+      properties:
+        interviewDate: { type: string }
+        notes: { type: string }
+        status: { type: string }
+        rejectReason: { type: string }
+
+    # --- ONLINE INTERVIEW ---
+    OnlineInterview:
+      type: object
+      required: [id, candidateId, createdAt]
+      properties:
+        id: { type: number }
+        candidateId: { type: number }
+        candidateName: { type: ["string", "null"] }
+        interviewDate: { type: ["string", "null"] }
+        questionsAnswers:
+          type: array
+          items:
+            $ref: "#/components/schemas/QA"
+        experienceLevel:
+          type: ["string", "null"]
+          enum: ["experienced", "inexperienced", null]
+        score: { type: ["integer", "null"] }
+        notes: { type: ["string", "null"] }
+        createdAt: { type: string }
+
+    QA:
+      type: object
+      required: [question]
+      properties:
+        question: { type: string }
+        answer: { type: ["string", "null"] }
+
+    OnlineInterviewInput:
+      type: object
+      required: [candidateId]
+      properties:
+        candidateId: { type: number }
+        interviewDate: { type: string }
+        questionsAnswers:
+          type: array
+          items:
+            $ref: "#/components/schemas/QA"
+        experienceLevel: { type: string }
+        score: { type: number }
+        notes: { type: string }
+
+    OnlineInterviewUpdate:
+      type: object
+      properties:
+        interviewDate: { type: string }
+        questionsAnswers:
+          type: array
+          items:
+            $ref: "#/components/schemas/QA"
+        experienceLevel: { type: string }
+        score: { type: number }
+        notes: { type: string }
+
+    # --- PREBOARDING ---
+    Preboarding:
+      type: object
+      required: [id, candidateId, createdAt]
+      properties:
+        id: { type: number }
+        candidateId: { type: number }
+        checklist:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistItem"
+        notes: { type: ["string", "null"] }
+        completedAt: { type: ["string", "null"] }
+        createdAt: { type: string }
+
+    ChecklistItem:
+      type: object
+      required: [label, completed]
+      properties:
+        label: { type: string }
+        completed: { type: boolean }
+
+    PreboardingInput:
+      type: object
+      required: [candidateId]
+      properties:
+        candidateId: { type: number }
+        checklist:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistItem"
+        notes: { type: string }
+
+    PreboardingUpdate:
+      type: object
+      properties:
+        checklist:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistItem"
+        notes: { type: string }
+        completedAt: { type: string }
+
+    # --- OFFLINE INTERVIEW ---
+    OfflineInterview:
+      type: object
+      required: [id, candidateId, scheduledDate, attendanceStatus, createdAt]
+      properties:
+        id: { type: number }
+        candidateId: { type: number }
+        candidateName: { type: ["string", "null"] }
+        scheduledDate: { type: string }
+        scheduledTime: { type: ["string", "null"] }
+        hrId: { type: ["integer", "null"] }
+        hrName: { type: ["string", "null"] }
+        trainerId: { type: ["integer", "null"] }
+        trainerName: { type: ["string", "null"] }
+        attendanceStatus:
+          type: string
+          enum: [attended, absent, rescheduled, pending]
+        hrScore: { type: ["integer", "null"] }
+        hrNotes: { type: ["string", "null"] }
+        trainerScore: { type: ["integer", "null"] }
+        trainerNotes: { type: ["string", "null"] }
+        result:
+          type: ["string", "null"]
+          enum: ["passed", "failed", null]
+        resultNotes: { type: ["string", "null"] }
+        createdAt: { type: string }
+
+    OfflineInterviewInput:
+      type: object
+      required: [candidateId, scheduledDate]
+      properties:
+        candidateId: { type: number }
+        scheduledDate: { type: string }
+        scheduledTime: { type: string }
+        hrId: { type: number }
+        trainerId: { type: number }
+
+    OfflineInterviewUpdate:
+      type: object
+      properties:
+        scheduledDate: { type: string }
+        scheduledTime: { type: string }
+        hrId: { type: number }
+        trainerId: { type: number }
+        attendanceStatus: { type: string }
+        hrScore: { type: number }
+        hrNotes: { type: string }
+        trainerScore: { type: number }
+        trainerNotes: { type: string }
+        result: { type: string }
+        resultNotes: { type: string }
+
+    # --- OFFER ---
+    Offer:
+      type: object
+      required: [id, candidateId, position, salary, status, createdAt]
+      properties:
+        id: { type: number }
+        candidateId: { type: number }
+        candidateName: { type: ["string", "null"] }
+        position: { type: string }
+        salary: { type: string }
+        workConditions: { type: ["string", "null"] }
+        documentsChecklist:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistItem"
+        status:
+          type: string
+          enum: [pending, accepted, rejected]
+        createdAt: { type: string }
+
+    OfferInput:
+      type: object
+      required: [candidateId, position, salary]
+      properties:
+        candidateId: { type: number }
+        position: { type: string }
+        salary: { type: string }
+        workConditions: { type: string }
+        documentsChecklist:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistItem"
+
+    OfferUpdate:
+      type: object
+      properties:
+        position: { type: string }
+        salary: { type: string }
+        workConditions: { type: string }
+        documentsChecklist:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistItem"
+        status: { type: string }
+
+    # --- INTERNSHIP ---
+    Internship:
+      type: object
+      required: [id, employeeId, startDate, createdAt]
+      properties:
+        id: { type: number }
+        employeeId: { type: number }
+        employeeName: { type: ["string", "null"] }
+        trainerId: { type: ["integer", "null"] }
+        trainerName: { type: ["string", "null"] }
+        startDate: { type: string }
+        endDate: { type: ["string", "null"] }
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistItem"
+        evaluations:
+          type: array
+          items:
+            $ref: "#/components/schemas/InternshipEvaluation"
+        status:
+          type: string
+          enum: [ongoing, completed, failed]
+          default: ongoing
+        createdAt: { type: string }
+
+    InternshipEvaluation:
+      type: object
+      required: [period, score]
+      properties:
+        period: { type: string }
+        score: { type: number }
+        notes: { type: ["string", "null"] }
+        evaluatedAt: { type: ["string", "null"] }
+
+    InternshipInput:
+      type: object
+      required: [employeeId, startDate]
+      properties:
+        employeeId: { type: number }
+        trainerId: { type: number }
+        startDate: { type: string }
+        endDate: { type: string }
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistItem"
+
+    InternshipUpdate:
+      type: object
+      properties:
+        trainerId: { type: number }
+        endDate: { type: string }
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistItem"
+        evaluations:
+          type: array
+          items:
+            $ref: "#/components/schemas/InternshipEvaluation"
+        status: { type: string }
+
+    # --- EMPLOYEE ---
+    Employee:
+      type: object
+      required: [id, fullName, position, departmentId, hiredAt, createdAt]
+      properties:
+        id: { type: number }
+        fullName: { type: string }
+        position: { type: string }
+        departmentId: { type: number }
+        departmentName: { type: ["string", "null"] }
+        mentorId: { type: ["integer", "null"] }
+        mentorName: { type: ["string", "null"] }
+        hiredAt: { type: string }
+        candidateId: { type: ["integer", "null"] }
+        orgRole: { type: ["string", "null"], enum: [coordinator, manager, pharmacist, null] }
+        reportsToId: { type: ["integer", "null"] }
+        location: { type: ["string", "null"] }
+        shiftType: { type: ["string", "null"], enum: [one, two, custom, null] }
+        shiftLabel: { type: ["string", "null"] }
+        photoUrl: { type: ["string", "null"] }
+        createdAt: { type: string }
+
+    EmployeeInput:
+      type: object
+      required: [fullName, position, departmentId, hiredAt]
+      properties:
+        fullName: { type: string }
+        position: { type: string }
+        departmentId: { type: number }
+        mentorId: { type: number }
+        hiredAt: { type: string }
+        candidateId: { type: number }
+        orgRole: { type: string, enum: [coordinator, manager, pharmacist] }
+        reportsToId: { type: number }
+        location: { type: string }
+        shiftType: { type: string, enum: [one, two, custom] }
+        shiftLabel: { type: string }
+        photoUrl: { type: string }
+
+    EmployeeUpdate:
+      type: object
+      properties:
+        fullName: { type: string }
+        position: { type: string }
+        departmentId: { type: number }
+        mentorId: { type: number }
+        orgRole: { type: string, enum: [coordinator, manager, pharmacist] }
+        reportsToId: { type: number }
+        location: { type: string }
+        shiftType: { type: string, enum: [one, two, custom] }
+        shiftLabel: { type: string }
+        photoUrl: { type: string }
+
+    # --- NOTIFICATION ---
+    Notification:
+      type: object
+      required: [id, text, type, isRead, createdAt]
+      properties:
+        id: { type: number }
+        userId: { type: number }
+        text: { type: string }
+        type:
+          type: string
+          enum: [new_request, interview_reminder, expired_task, stage_change, offer_accepted, hired]
+        isRead: { type: boolean }
+        linkUrl: { type: ["string", "null"] }
+        createdAt: { type: string }
+
+    # --- DASHBOARD ---
+    DashboardStats:
+      type: object
+      required: [openRequests, activeVacancies, activeCandidates, hiredThisMonth, avgTimeToHire, unreadNotifications]
+      properties:
+        openRequests: { type: number }
+        activeVacancies: { type: number }
+        activeCandidates: { type: number }
+        hiredThisMonth: { type: number }
+        avgTimeToHire: { type: number }
+        unreadNotifications: { type: number }
+
+    PipelineStageCount:
+      type: object
+      required: [stage, label, count]
+      properties:
+        stage: { type: string }
+        label: { type: string }
+        count: { type: number }
+
+    ActivityItem:
+      type: object
+      required: [id, text, type, createdAt]
+      properties:
+        id: { type: number }
+        text: { type: string }
+        type: { type: string }
+        actorName: { type: ["string", "null"] }
+        createdAt: { type: string }
+
+    ChannelStat:
+      type: object
+      required: [channelId, channelName, channelIcon, publishedCount, candidatesCount]
+      properties:
+        channelId: { type: number }
+        channelName: { type: string }
+        channelIcon: { type: string }
+        publishedCount: { type: number }
+        candidatesCount: { type: number }
+
+    RecruiterTask:
+      type: object
+      required: [id, type, description, priority, dueDate]
+      properties:
+        id: { type: number }
+        type:
+          type: string
+          enum: [call_candidate, schedule_interview, review_request, follow_up]
+        description: { type: string }
+        candidateId: { type: ["integer", "null"] }
+        candidateName: { type: ["string", "null"] }
+        priority:
+          type: string
+          enum: [high, medium, low]
+        dueDate: { type: string }
+
+    TaskAttachment:
+      type: object
+      required: [id, name, mimeType, kind, url]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        mimeType: { type: string }
+        kind:
+          type: string
+          enum: [image, file]
+        url: { type: string }
+        size: { type: number }
+
+    Vazifa:
+      type: object
+      required: [id, title, status, priority, assigneeKind, assigneeId, createdById, attachments, createdAt, updatedAt]
+      properties:
+        id: { type: number }
+        title: { type: string }
+        description: { type: ["string", "null"] }
+        status:
+          type: string
+          enum: [todo, in_progress, done, cancelled]
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+        dueAt: { type: ["string", "null"] }
+        assigneeKind:
+          type: string
+          enum: [user, employee]
+        assigneeId: { type: number }
+        assigneeName: { type: ["string", "null"] }
+        createdById: { type: number }
+        createdByName: { type: ["string", "null"] }
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskAttachment"
+        createdAt: { type: string }
+        updatedAt: { type: string }
+
+    VazifaInput:
+      type: object
+      required: [title, assigneeKind, assigneeId]
+      properties:
+        title: { type: string }
+        description: { type: ["string", "null"] }
+        status: { type: string }
+        priority: { type: string }
+        dueAt: { type: ["string", "null"] }
+        assigneeKind:
+          type: string
+          enum: [user, employee]
+        assigneeId: { type: number }
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskAttachment"
+
+    VazifaUpdate:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: ["string", "null"] }
+        status: { type: string }
+        priority: { type: string }
+        dueAt: { type: ["string", "null"] }
+        assigneeKind:
+          type: string
+          enum: [user, employee]
+        assigneeId: { type: number }
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskAttachment"
