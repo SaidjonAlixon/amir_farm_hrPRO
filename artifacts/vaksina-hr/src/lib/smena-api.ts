@@ -1,6 +1,7 @@
 export type ShiftTypeKey =
   | "one"
   | "two"
+  | "three"
   | "remote"
   | "flexible"
   | "alternate"
@@ -192,8 +193,68 @@ export function deleteDayBranchOverride(employeeId: number, workDate: string) {
   );
 }
 
+export type DayShiftPlanSegment = {
+  id: number;
+  employeeId: number;
+  workDate: string;
+  segmentOrder: number;
+  shiftType: string;
+  shiftStart: string | null;
+  shiftEnd: string | null;
+  branchId: number | null;
+  branchName: string | null;
+  note: string | null;
+};
+
+export type DayShiftPlanDay = {
+  workDate: string;
+  segments: DayShiftPlanSegment[];
+};
+
+export function fetchDayShiftPlans(employeeId: number) {
+  return apiJson<{
+    employeeId: number;
+    homeBranchId: number | null;
+    homeBranchName: string | null;
+    days: DayShiftPlanDay[];
+    legacyBranchItems: DayBranchOverrideItem[];
+  }>(`/smena/day-plan/${employeeId}`);
+}
+
+export function saveDayShiftPlan(
+  employeeId: number,
+  body: {
+    workDate: string;
+    note?: string;
+    segments: Array<{
+      shiftType: ShiftTypeKey;
+      shiftStart?: string;
+      shiftEnd?: string;
+      branchId?: number | null;
+    }>;
+  },
+) {
+  return apiJson<{
+    ok: boolean;
+    workDate: string;
+    segmentCount: number;
+    message: string;
+  }>(`/smena/day-plan/${employeeId}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteDayShiftPlan(employeeId: number, workDate: string) {
+  return apiJson<{ ok: boolean }>(
+    `/smena/day-plan/${employeeId}?workDate=${encodeURIComponent(workDate)}`,
+    { method: "DELETE" },
+  );
+}
+
 export function shiftTypeShort(type?: string | null): string {
   if (type === "two") return "2-smena";
+  if (type === "three") return "3-smena";
   if (type === "remote") return "Masofadan";
   if (type === "flexible") return "Erkin";
   if (type === "alternate") return "Kun ora";

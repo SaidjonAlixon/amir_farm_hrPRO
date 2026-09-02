@@ -22,6 +22,9 @@ export {
 };
 
 export const FACE_AI_TIMEOUT_MS = envNum("FACE_AI_TIMEOUT_MS", 20_000);
+export const FACE_AI_GALLERY_MAX = envNum("FACE_AI_GALLERY_MAX", 3);
+export const FACE_AI_PAIRWISE_MAX = envNum("FACE_AI_PAIRWISE_MAX", 3);
+export const FACE_AI_DUP_MAX = envNum("FACE_AI_DUP_MAX", 2);
 
 function envNum(name: string, fallback: number): number {
   const raw = process.env[name]?.trim();
@@ -43,6 +46,19 @@ export function isFaceAiEnabled(): boolean {
   return Boolean(process.env.OPENAI_API_KEY?.trim());
 }
 
+/** OpenAI Vision detail — low ≈85 token/rasm (arzon), high aniqroq lekin qimmat. */
+export function faceAiImageDetail(): "low" | "high" | "auto" {
+  const raw = process.env.FACE_AI_IMAGE_DETAIL?.trim().toLowerCase();
+  if (raw === "high" || raw === "auto") return raw;
+  return "low";
+}
+
+/** Lokal match juda aniq bo‘lsa AI 1:1 chaqiruvini o‘tkazib yuborish (tejamkor). */
+export function shouldSkipOwnerAi(localDist: number, localCosine: number): boolean {
+  if (!envFlag("FACE_AI_SKIP_IF_CLEAR", false)) return false;
+  return localDist <= 0.28 && localCosine >= 0.955;
+}
+
 function toDataUrl(raw: string | null | undefined): string | null {
   if (!raw || typeof raw !== "string") return null;
   const s = raw.trim();
@@ -51,13 +67,41 @@ function toDataUrl(raw: string | null | undefined): string | null {
   return s;
 }
 
+/** Vision + detail:low uchun tavsiya. gpt-4o-mini vision uchun ~33× qimmat (2833 token/rasm). */
+export const FACE_AI_MODEL_DEFAULT = "gpt-4o";
+const FACE_AI_MODEL_EXPENSIVE_VISION = new Set([
+  "gpt-4o-mini",
+  "gpt-4o-mini-2024-07-18",
+  "gpt-4.1-mini",
+  "gpt-4.1-nano",
+  "o4-mini",
+]);
+
+let faceAiModelWarned = false;
+
+export function resolveOpenAiFaceModel(): string {
+  const model = process.env.OPENAI_FACE_MODEL?.trim() || FACE_AI_MODEL_DEFAULT;
+  if (!faceAiModelWarned && FACE_AI_MODEL_EXPENSIVE_VISION.has(model)) {
+    faceAiModelWarned = true;
+    logger.warn(
+      {
+        event: "face_ai_model_hint",
+        model,
+        hint: "FACE_AI_IMAGE_DETAIL=low bilan gpt-4o yoki gpt-4.1 arzonroq. Mini/nano vision patch tizimi qimmat.",
+      },
+      "face AI model may cost more for vision",
+    );
+  }
+  return model;
+}
+
 async function openaiJson(
   messages: unknown[],
   maxTokens = 280,
 ): Promise<unknown> {
   const key = process.env.OPENAI_API_KEY?.trim();
   if (!key) throw new Error("OPENAI_API_KEY missing");
-  const model = process.env.OPENAI_FACE_MODEL?.trim() || "gpt-4o";
+  const model = resolveOpenAiFaceModel();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FACE_AI_TIMEOUT_MS);
   try {
@@ -123,6 +167,7 @@ async function callOpenAiFaceCompare(
   liveDataUrl: string,
   systemPrompt: string = COMPARE_SYSTEM,
 ): Promise<FaceAiCompareResult> {
+  const detail = faceAiImageDetail();
   const parsed = parseFaceAiPayload(
     await openaiJson([
       { role: "system", content: systemPrompt },
@@ -130,14 +175,57 @@ async function callOpenAiFaceCompare(
         role: "user",
         content: [
           { type: "text", text: "Image 1 = enrolled record. Image 2 = live. Same human as a fact?" },
-          { type: "image_url", image_url: { url: enrolledDataUrl, detail: "high" } },
-          { type: "image_url", image_url: { url: liveDataUrl, detail: "high" } },
+          { type: "image_url", image_url: { url: enrolledDataUrl, detail } },
+          { type: "image_url", image_url: { url: liveDataUrl, detail } },
         ],
       },
     ]),
   );
   if (!parsed) throw new Error("openai_bad_json");
   return parsed;
+}
+
+export async function inspectLiveAntiSpoof(
+  liveSnapshot?: unknown,
+): Promise<{ ok: true } | { ok: false; error: string; code: string }> {
+  if (!isFaceAiEnabled()) return { ok: true };
+  const live = toDataUrl(typeof liveSnapshot === "string" ? liveSnapshot : null);
+  if (!live) return { ok: true };
+  try {
+    const detail = faceAiImageDetail();
+    const inspect = parseFaceAiInspect(
+      await openaiJson(
+        [
+          {
+            role: "system",
+            content:
+              "Anti-spoof for Face ID. Reject if: photo of a screen/monitor/phone showing a face, printed photo, " +
+              "mask without real skin texture, or zero/multiple faces. Allow normal live selfie with slight angle/light. " +
+              'JSON: {"ok":boolean,"faceCount":number,"quality":0-1,"reason":string}.',
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Is this a live human face (not a photo of a photo or screen)?" },
+              { type: "image_url", image_url: { url: live, detail } },
+            ],
+          },
+        ],
+        120,
+      ),
+    );
+    if (!inspect?.ok || inspect.faceCount !== 1) {
+      return {
+        ok: false,
+        error: inspect?.reason || "Jonli yuz emas — ekran yoki rasm ko‘rinmoqda. Kameraga to‘g‘ridan-to‘g‘ri qarang.",
+        code: "face_ai_spoof",
+      };
+    }
+    return { ok: true };
+  } catch (err) {
+    logger.warn({ event: "face_ai_antispoof", err: err instanceof Error ? err.message : "error" }, "anti-spoof skipped");
+    return { ok: true };
+  }
 }
 
 export async function inspectEnrollFaceWithAi(
@@ -149,6 +237,7 @@ export async function inspectEnrollFaceWithAi(
     return { ok: false, error: "Yuz rasmi olinmadi — kameraga tik qarab qayta urinib ko‘ring", code: "face_ai_no_photo" };
   }
   try {
+    const detail = faceAiImageDetail();
     const inspect = parseFaceAiInspect(
       await openaiJson(
         [
@@ -163,7 +252,7 @@ export async function inspectEnrollFaceWithAi(
             role: "user",
             content: [
               { type: "text", text: "Is there exactly one real human face suitable to enroll?" },
-              { type: "image_url", image_url: { url: live, detail: "high" } },
+              { type: "image_url", image_url: { url: live, detail } },
             ],
           },
         ],
@@ -227,7 +316,7 @@ export async function rejectIfFaceTakenByAi(opts: {
   const close = opts.neighbors
     .filter((n) => Number.isFinite(n.dist) && n.dist <= 0.42)
     .sort((a, b) => a.dist - b.dist)
-    .slice(0, 3);
+    .slice(0, FACE_AI_DUP_MAX);
   if (!close.length) return { ok: true };
 
   const photos = await loadFacePhotos(close.map((n) => n.id));
@@ -309,7 +398,8 @@ export async function resolveLoginIdentityWithAi(opts: {
       code: "face_ai_no_photo",
     };
   }
-  const photos = await loadFacePhotos(opts.candidates.map((c) => c.id));
+  const capped = opts.candidates.slice(0, FACE_AI_GALLERY_MAX);
+  const photos = await loadFacePhotos(capped.map((c) => c.id));
   if (!photos.size) {
     return {
       ok: false,
@@ -319,9 +409,12 @@ export async function resolveLoginIdentityWithAi(opts: {
   }
   const scores: FaceAiCandidateScore[] = [];
   try {
-    for (const c of opts.candidates) {
+    let pairwise = 0;
+    for (const c of capped) {
+      if (pairwise >= FACE_AI_PAIRWISE_MAX) break;
       const photo = photos.get(c.id);
       if (!photo) continue;
+      pairwise += 1;
       const ai = await callOpenAiFaceCompare(photo.dataUrl, live);
       scores.push({
         faceProfileId: c.id,
@@ -381,6 +474,39 @@ export async function resolveLoginIdentityWithAi(opts: {
     cosine: local.cosine,
     confidence: winner.confidence,
   };
+}
+
+export async function confirmOwnerFaceWithAi(opts: {
+  faceProfileId: number;
+  liveSnapshot?: unknown;
+  localDist: number;
+  localCosine: number;
+}): Promise<FaceAiGate> {
+  if (!isFaceAiEnabled()) {
+    return {
+      ok: true,
+      source: "local_fallback",
+      confidence: opts.localCosine,
+      similarity: opts.localCosine,
+    };
+  }
+  if (shouldSkipOwnerAi(opts.localDist, opts.localCosine)) {
+    logger.info(
+      {
+        event: "face_ai_owner_skip",
+        dist: Number(opts.localDist.toFixed(4)),
+        cosine: Number(opts.localCosine.toFixed(4)),
+      },
+      "face AI owner verify skipped — clear local match",
+    );
+    return {
+      ok: true,
+      source: "local_fallback",
+      confidence: opts.localCosine,
+      similarity: opts.localCosine,
+    };
+  }
+  return verifyFaceWithAi(opts);
 }
 
 export async function verifyFaceWithAi(opts: {

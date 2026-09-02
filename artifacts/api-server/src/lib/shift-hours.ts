@@ -3,6 +3,7 @@
 export type ShiftTypeKey =
   | "one"
   | "two"
+  | "three"
   | "remote"
   | "flexible"
   | "alternate"
@@ -44,6 +45,17 @@ export const SHIFT_TWO: ShiftWindow = {
   warnHm: "17:45",
   warnText:
     "2-smenaga tezroq harakat qiling. 15 daqiqadan so‘ng ish vaqti boshlanadi (18:00). Ulgurmasangiz jarima qo‘llanadi.",
+};
+
+export const SHIFT_THREE: ShiftWindow = {
+  key: "three",
+  label: "3-smena",
+  hint: "Qo‘shimcha / maxsus vaqtli smena",
+  start: "14:00",
+  end: "22:00",
+  warnHm: "13:45",
+  warnText:
+    "3-smenaga tezroq harakat qiling. 15 daqiqadan so‘ng ish vaqti boshlanadi. Ulgurmasangiz jarima qo‘llanadi.",
 };
 
 export const SHIFT_REMOTE: ShiftWindow = {
@@ -92,6 +104,7 @@ export const SHIFT_ALTERNATE_NIGHT: ShiftWindow = {
 export const ALL_SHIFTS: ShiftWindow[] = [
   SHIFT_ONE,
   SHIFT_TWO,
+  SHIFT_THREE,
   SHIFT_REMOTE,
   SHIFT_FLEXIBLE,
   SHIFT_ALTERNATE,
@@ -114,6 +127,7 @@ export function isValidShiftType(raw?: string | null): raw is ShiftTypeKey {
 
 export function normalizeShiftType(raw?: string | null): ShiftTypeKey {
   if (raw === "two") return "two";
+  if (raw === "three") return "three";
   if (raw === "remote") return "remote";
   if (raw === "flexible") return "flexible";
   if (raw === "alternate") return "alternate";
@@ -140,6 +154,7 @@ export function shiftWindow(shiftType?: string | null): ShiftWindow {
     return getCachedShiftWindow(key);
   } catch {
     if (key === "two") return SHIFT_TWO;
+    if (key === "three") return SHIFT_THREE;
     if (key === "remote") return SHIFT_REMOTE;
     if (key === "flexible") return SHIFT_FLEXIBLE;
     if (key === "alternate") return SHIFT_ALTERNATE;
@@ -182,6 +197,7 @@ export function hoursForStaff(
     return { start: w.start, end: w.end };
   }
   if (key === "two") return { start: SHIFT_TWO.start, end: SHIFT_TWO.end };
+  if (key === "three") return { start: SHIFT_THREE.start, end: SHIFT_THREE.end };
   if (key === "one" && PHARMACY_SHIFT_ORG_ROLES.has(orgRole || "")) {
     return { start: SHIFT_ONE.start, end: SHIFT_ONE.end };
   }

@@ -51,7 +51,7 @@ const FALLBACK_ENROLL: Challenge[] = [
 const FALLBACK_LOGIN: Challenge[] = [{ key: "center", pose: "center", need: 2 }];
 
 const MIN_SCORE_ENROLL = 0.45;
-const MIN_SCORE_LOGIN = 0.45;
+const MIN_SCORE_LOGIN = 0.48;
 
 function stepHint(step: Challenge): string {
   if (step.blink) return "Ko‘zlarni yumib oching";
@@ -227,16 +227,19 @@ export function FaceScanDialog({ open, onOpenChange, mode, onCaptured, title, de
             .map((b, i) => ({ b, s: steps[i] }))
             .filter((x) => x.b.length && !x.s?.blink)
             .map((x) => averageDescriptorsRobust(x.b));
+          const centerSamples = poseBuckets[0]?.length ? poseBuckets[0] : [];
           const payload =
             mode === "enroll"
               ? identityTemplates
-              : identityTemplates[0]
-                ? [identityTemplates[0]]
-                : templates[0]
-                  ? [templates[0]]
-                  : samples[0]
-                    ? [samples[0]]
-                    : [];
+              : centerSamples.length >= 2
+                ? centerSamples
+                : identityTemplates[0]
+                  ? [identityTemplates[0]]
+                  : templates[0]
+                    ? [templates[0]]
+                    : samples[0]
+                      ? [samples[0]]
+                      : [];
           try {
             const captured = await onCapturedRef.current(
               payload,

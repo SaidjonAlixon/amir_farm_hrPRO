@@ -1,5 +1,5 @@
-import { eq } from "drizzle-orm";
-import { db, shiftTemplatesTable } from "@workspace/db";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { db, employeesTable, shiftTemplatesTable } from "@workspace/db";
 import {
   ALL_SHIFTS,
   hmToMinutes,
@@ -8,6 +8,8 @@ import {
 } from "./shift-hours";
 
 let catalogCache: Map<string, ShiftWindow> | null = null;
+let catalogLoadedAt = 0;
+const CATALOG_TTL_MS = 30_000;
 
 function warnBefore(startHm: string, minutes: number): string {
   const total = hmToMinutes(startHm) - minutes;
@@ -78,6 +80,14 @@ export async function reloadShiftCatalog(): Promise<void> {
     if (!map.has(s.key)) map.set(s.key, s);
   }
   catalogCache = map;
+  catalogLoadedAt = Date.now();
+}
+
+/** Vercel serverless — har bir so‘rovda bazadan yangi vaqt (TTL bilan). */
+export async function reloadShiftCatalogIfStale(maxAgeMs = CATALOG_TTL_MS): Promise<void> {
+  if (!catalogCache || Date.now() - catalogLoadedAt > maxAgeMs) {
+    await reloadShiftCatalog();
+  }
 }
 
 export function getCachedShiftWindow(key: string): ShiftWindow {
@@ -114,6 +124,20 @@ export function resolveEmployeeShift(emp: EmployeeShiftFields): ShiftWindow {
       overnight,
       warnHm: warnBefore(start, 15),
       warnText: `${label}: ${start}–${end}. Kechiksa — jarima.`,
+    };
+  }
+  if (key === "three" && (emp.shiftStart?.trim() || emp.shiftEnd?.trim())) {
+    const base = getCachedShiftWindow("three");
+    const start = emp.shiftStart?.trim() || base.start;
+    const end = emp.shiftEnd?.trim() || base.end;
+    const overnight = hmToMinutes(end) <= hmToMinutes(start);
+    return {
+      ...base,
+      start,
+      end,
+      overnight,
+      warnHm: warnBefore(start, 15),
+      warnText: `3-smena: ${start}–${end}. Kechiksa — jarima.`,
     };
   }
   return getCachedShiftWindow(key);
@@ -185,5 +209,36 @@ export async function updateShiftTemplate(
 
   await db.update(shiftTemplatesTable).set(next).where(eq(shiftTemplatesTable.key, key));
   await reloadShiftCatalog();
+  await syncEmployeeShiftLabelsForType(key);
   return getCachedShiftWindow(key);
+}
+
+/** Standart smena vaqti o‘zgarganda xodimlardagi shiftLabel ham yangilanadi. */
+async function syncEmployeeShiftLabelsForType(key: string): Promise<void> {
+  if (key === "custom") return;
+  const w = getCachedShiftWindow(key);
+  const hoursNote = w.skipGeofence
+    ? `${w.label}: ${w.start}–${w.end} · GPS majburiy emas`
+    : w.overnight
+      ? `${w.label}: ${w.start}–${w.end} (ertalab)`
+      : `${w.label}: ${w.start}–${w.end}`;
+
+  if (key === "three") {
+    await db
+      .update(employeesTable)
+      .set({ shiftLabel: hoursNote, updatedAt: new Date() })
+      .where(
+        and(
+          eq(employeesTable.shiftType, "three"),
+          or(isNull(employeesTable.shiftStart), sql`trim(${employeesTable.shiftStart}) = ''`),
+          or(isNull(employeesTable.shiftEnd), sql`trim(${employeesTable.shiftEnd}) = ''`),
+        ),
+      );
+    return;
+  }
+
+  await db
+    .update(employeesTable)
+    .set({ shiftLabel: hoursNote, updatedAt: new Date() })
+    .where(eq(employeesTable.shiftType, key));
 }

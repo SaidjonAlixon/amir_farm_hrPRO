@@ -169,6 +169,7 @@ router.get("/auth/face/status", requireAuth, async (req: AuthRequest, res): Prom
     hasPhoto: Boolean(row?.photoUrl),
     photoUrl: row?.photoUrl ? `/api/auth/face/photo?t=${stamp}` : null,
     createdAt: row?.createdAt ?? null,
+    aiEnabled: isFaceAiEnabled(),
   });
 });
 
@@ -246,7 +247,7 @@ router.post("/auth/face/enroll", requireAuth, async (req: AuthRequest, res): Pro
     }
   } else {
     const nearest = await findDuplicateEnrollHits(descriptors.slice(0, 1), userId);
-    const hard = nearest.filter((h) => h.dist <= Math.min(FACE_ENROLL_BLOCK_MAX, 0.30));
+    const hard = nearest.filter((h) => h.dist <= FACE_ENROLL_BLOCK_MAX);
     if (hard.length) {
       logger.info(
         {

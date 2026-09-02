@@ -11,6 +11,13 @@ export const attendanceRecordsTable = pgTable(
     employeeId: integer("employee_id").notNull(),
     userId: integer("user_id"),
     workDate: text("work_date").notNull(),
+    /** Bir kundagi smena tartibi (0 = asosiy; 1+ = qo‘shimcha smena) */
+    segmentOrder: integer("segment_order").notNull().default(0),
+    /** Punch vaqtidagi smena snapshot */
+    shiftType: text("shift_type"),
+    shiftStart: text("shift_start"),
+    shiftEnd: text("shift_end"),
+    branchId: integer("branch_id"),
     checkInAt: timestamp("check_in_at", { withTimezone: true }),
     checkOutAt: timestamp("check_out_at", { withTimezone: true }),
     /** present | late | absent | incomplete | leave */
@@ -29,7 +36,7 @@ export const attendanceRecordsTable = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [
-    uniqueIndex("attendance_records_emp_date_uidx").on(t.employeeId, t.workDate),
+    uniqueIndex("attendance_records_emp_date_seg_uidx").on(t.employeeId, t.workDate, t.segmentOrder),
     index("attendance_records_date_idx").on(t.workDate),
     index("attendance_records_employee_idx").on(t.employeeId),
   ],

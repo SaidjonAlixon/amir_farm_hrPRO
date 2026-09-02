@@ -8,12 +8,19 @@ import {
   getCatalogShifts,
   isValidHm,
   normalizeHm,
-  reloadShiftCatalog,
+  reloadShiftCatalogIfStale,
   resolveEmployeeShift,
   shiftHoursLabelForEmployee,
 } from "../lib/shift-catalog";
 import { isPharmacyShiftStaff, isValidShiftType, normalizeShiftType, type ShiftTypeKey } from "../lib/shift-hours";
 import { listDayBranchOverrides } from "../lib/branch-day-override";
+import {
+  deleteDayShiftPlan,
+  groupDayPlansByDate,
+  listDayShiftPlans,
+  saveDayShiftPlan,
+  type DayPlanSegmentInput,
+} from "../lib/day-shift-plan";
 
 const router: IRouter = Router();
 
@@ -26,6 +33,10 @@ function isLeadRole(role: string) {
 
 function isAdminLike(role: string) {
   return role === "admin" || role === "director" || isHrRole(role);
+}
+
+function canEditGlobalShiftTemplates(role: string): boolean {
+  return isAdminLike(role) || role === "koordinator" || role === "mudir";
 }
 
 type EmpRow = {
@@ -211,7 +222,7 @@ function applyShiftPatch(
     shiftEnd?: string;
   },
   patch: Record<string, unknown>,
-  opts: { adminLike: boolean },
+  opts: { adminLike: boolean; allowThreeTimes?: boolean },
 ) {
   if (body.shiftType == null) return null;
   if (!isValidShiftType(body.shiftType)) {
@@ -232,6 +243,30 @@ function applyShiftPatch(
     patch.shiftLabel = label;
     return null;
   }
+  if (st === "three") {
+    patch.shiftType = "three";
+    const hasStart = Boolean(body.shiftStart?.trim());
+    const hasEnd = Boolean(body.shiftEnd?.trim());
+    if (hasStart || hasEnd) {
+      if (!opts.allowThreeTimes && !opts.adminLike) {
+        return "3-smena vaqtini faqat admin yoki koordinator belgilaydi";
+      }
+      if (!isValidHm(body.shiftStart) || !isValidHm(body.shiftEnd)) {
+        return "3-smena uchun boshlanish va tugash vaqti (HH:MM) kerak";
+      }
+      patch.shiftStart = normalizeHm(body.shiftStart!);
+      patch.shiftEnd = normalizeHm(body.shiftEnd!);
+    } else {
+      patch.shiftStart = null;
+      patch.shiftEnd = null;
+    }
+    patch.shiftLabel = shiftHoursLabelForEmployee({
+      shiftType: "three",
+      shiftStart: (patch.shiftStart as string | null) ?? undefined,
+      shiftEnd: (patch.shiftEnd as string | null) ?? undefined,
+    });
+    return null;
+  }
   patch.shiftType = st;
   patch.shiftStart = null;
   patch.shiftEnd = null;
@@ -240,7 +275,7 @@ function applyShiftPatch(
 }
 
 router.get("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<void> => {
-  await reloadShiftCatalog();
+  await reloadShiftCatalogIfStale();
   const role = req.userRole || "";
   const me = await empByUserId(req.userId!);
   const pharmacy = isPharmacyShiftStaff(role, me?.orgRole);
@@ -299,7 +334,7 @@ router.get("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<void
     canPickOwnBranch: Boolean(me && canPickOwnBranch(role, me.orgRole)),
     canAssignOthers: assignable.length > 0,
     canAssignAny: isAdminLike(role),
-    canEditShiftTemplates: isAdminLike(role),
+    canEditShiftTemplates: canEditGlobalShiftTemplates(role),
     employee: me
       ? {
           id: me.id,
@@ -315,8 +350,11 @@ router.get("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<void
     assignable,
     rules: {
       custom: "Admin istalgan lavozimdagi xodimga maxsus ish vaqti belgilay oladi.",
+      three:
+        "3-smena: admin/koordinator vaqt belgilaydi. Doimiy biriktirish yoki faqat bir kun uchun reja tuzish mumkin.",
       branch:
         "Admin istalgan lavozimdagi xodimni istalgan smena/filialga o‘tkaza oladi. Face ID filial GPS (35 m) da; masofadan/erkin grafikda GPS talab qilinmaydi.",
+      multiShift: "Bir kunda 1-smena + 3-smena kabi bir nechta smena rejalashtirish mumkin.",
     },
   });
 });
@@ -342,7 +380,10 @@ router.patch("/smena/me", requireAuth, async (req: AuthRequest, res): Promise<vo
       res.status(403).json({ error: "Smena tanlash uchun ruxsat yo‘q" });
       return;
     }
-    const err = applyShiftPatch(body, patch, { adminLike: isAdminLike(role) });
+    const err = applyShiftPatch(body, patch, {
+      adminLike: isAdminLike(role),
+      allowThreeTimes: isAdminLike(role) || role === "koordinator",
+    });
     if (err) {
       res.status(400).json({ error: err });
       return;
@@ -406,7 +447,10 @@ router.patch("/smena/assign/:employeeId", requireAuth, async (req: AuthRequest, 
   const patch: Record<string, unknown> = { updatedAt: new Date() };
 
   if (body.shiftType != null) {
-    const err = applyShiftPatch(body, patch, { adminLike: isAdminLike(role) });
+    const err = applyShiftPatch(body, patch, {
+      adminLike: isAdminLike(role),
+      allowThreeTimes: isAdminLike(role) || role === "koordinator" || role === "mudir",
+    });
     if (err) {
       res.status(400).json({ error: err });
       return;
@@ -653,6 +697,157 @@ router.delete("/smena/day-branch/:employeeId", requireAuth, async (req: AuthRequ
         eq(employeeBranchDayOverridesTable.workDate, workDate),
       ),
     );
+  res.json({ ok: true, employeeId: targetId, workDate });
+});
+
+/** Kelgusi kunlar uchun kunlik smena rejasi (bir yoki bir nechta segment) */
+router.get("/smena/day-plan/:employeeId", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  const role = req.userRole || "";
+  const me = await empByUserId(req.userId!);
+  if (!me) {
+    res.status(400).json({ error: "Xodim kartochkasi yo‘q" });
+    return;
+  }
+  const targetId = Number(req.params.employeeId);
+  const target = await empById(targetId);
+  if (!target) {
+    res.status(404).json({ error: "Xodim topilmadi" });
+    return;
+  }
+  const scope = role === "koordinator" ? await coordinatorScopeIds(me) : null;
+  if (!canAssignTarget({ role, me, target, scope }) && target.userId !== req.userId) {
+    res.status(403).json({ error: "Ko‘rish huquqi yo‘q" });
+    return;
+  }
+  const from = todayTashkentYmd();
+  const to = addDaysYmd(from, 30);
+  const items = await listDayShiftPlans(targetId, from, to);
+  res.json({
+    employeeId: targetId,
+    homeBranchId: target.assignedBranchId || (target.orgRole === MANAGER_ORG ? target.id : target.reportsToId),
+    homeBranchName:
+      (await listBranches()).find(
+        (b) =>
+          b.id ===
+          (target.assignedBranchId || (target.orgRole === MANAGER_ORG ? target.id : target.reportsToId)),
+      )?.name || target.location || null,
+    days: groupDayPlansByDate(items),
+    legacyBranchItems: await listDayBranchOverrides(targetId, from, to),
+  });
+});
+
+/**
+ * Kunlik smena rejasi — bir kunda bir yoki bir nechta smena (masalan 1-smena + 3-smena).
+ * Har segment uchun smena turi, vaqt va ixtiyoriy filial.
+ */
+router.put("/smena/day-plan/:employeeId", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  const role = req.userRole || "";
+  const me = await empByUserId(req.userId!);
+  if (!me) {
+    res.status(400).json({ error: "Xodim kartochkasi yo‘q" });
+    return;
+  }
+  const targetId = Number(req.params.employeeId);
+  const target = await empById(targetId);
+  if (!target) {
+    res.status(404).json({ error: "Xodim topilmadi" });
+    return;
+  }
+  const scope = role === "koordinator" ? await coordinatorScopeIds(me) : null;
+  if (!canAssignTarget({ role, me, target, scope })) {
+    res.status(403).json({ error: "Bu xodimga kunlik smena belgilash huquqi yo‘q" });
+    return;
+  }
+
+  const body = req.body as {
+    workDate?: string;
+    note?: string;
+    segments?: DayPlanSegmentInput[];
+  };
+  const workDate = String(body.workDate || "").trim();
+  if (!isYmd(workDate)) {
+    res.status(400).json({ error: "Sana YYYY-MM-DD formatida kerak", code: "bad_date" });
+    return;
+  }
+  const today = todayTashkentYmd();
+  if (workDate < today) {
+    res.status(400).json({ error: "O‘tgan kun uchun belgilab bo‘lmaydi", code: "past_date" });
+    return;
+  }
+  const segments = Array.isArray(body.segments) ? body.segments : [];
+  if (!segments.length) {
+    res.status(400).json({ error: "Kamida bitta smena segmenti kerak" });
+    return;
+  }
+
+  for (const seg of segments) {
+    if (seg.branchId != null) {
+      const branch = await empById(Number(seg.branchId));
+      if (!branch || branch.orgRole !== MANAGER_ORG || !hasGps(branch)) {
+        res.status(400).json({ error: "Filial GPS yo‘q yoki mudir emas" });
+        return;
+      }
+    }
+  }
+
+  try {
+    await saveDayShiftPlan(targetId, workDate, segments, {
+      note: body.note,
+      createdById: me.userId,
+    });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Reja noto‘g‘ri" });
+    return;
+  }
+
+  if (target.userId) {
+    const segTxt = segments
+      .map((s, i) => {
+        const t = s.shiftType === "three" ? "3-smena" : s.shiftType === "one" ? "1-smena" : s.shiftType;
+        return `${i + 1}) ${t} ${s.shiftStart || ""}–${s.shiftEnd || ""}`.trim();
+      })
+      .join("; ");
+    await notifyUser({
+      userId: target.userId,
+      text: `${target.fullName}: ${workDate} kuni smena rejasi: ${segTxt}. Davomat shu reja bo‘yicha qabul qilinadi.`,
+      type: "smena_day_plan",
+      linkUrl: "/davomat-face",
+    });
+  }
+
+  res.json({
+    ok: true,
+    employeeId: targetId,
+    workDate,
+    segmentCount: segments.length,
+    message: `${workDate} kuni smena rejasi saqlandi. Davomat shu vaqt va filial bo‘yicha ishlaydi.`,
+  });
+});
+
+router.delete("/smena/day-plan/:employeeId", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  const role = req.userRole || "";
+  const me = await empByUserId(req.userId!);
+  if (!me) {
+    res.status(400).json({ error: "Xodim kartochkasi yo‘q" });
+    return;
+  }
+  const targetId = Number(req.params.employeeId);
+  const target = await empById(targetId);
+  if (!target) {
+    res.status(404).json({ error: "Xodim topilmadi" });
+    return;
+  }
+  const scope = role === "koordinator" ? await coordinatorScopeIds(me) : null;
+  if (!canAssignTarget({ role, me, target, scope })) {
+    res.status(403).json({ error: "O‘chirish huquqi yo‘q" });
+    return;
+  }
+  const workDate = String(req.query.workDate || req.body?.workDate || "").trim();
+  if (!isYmd(workDate)) {
+    res.status(400).json({ error: "workDate kerak (YYYY-MM-DD)" });
+    return;
+  }
+  await deleteDayShiftPlan(targetId, workDate);
   res.json({ ok: true, employeeId: targetId, workDate });
 });
 

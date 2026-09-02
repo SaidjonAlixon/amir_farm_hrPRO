@@ -9,7 +9,7 @@ import {
 import { logger } from "../lib/logger";
 import { notifyAllActiveUsers } from "../lib/notify";
 import { DAVOMAT_GEOFENCE_METERS } from "../routes/davomat";
-import { resolveEmployeeShift } from "../lib/shift-catalog";
+import { resolveEmployeeShift, reloadShiftCatalogIfStale } from "../lib/shift-catalog";
 import { hmToMinutes, isPharmacyShiftStaff } from "../lib/shift-hours";
 
 const FIVE_MIN_MS = 5 * 60 * 1000;
@@ -251,6 +251,7 @@ export async function remindDavomatCheckOut(): Promise<number> {
 }
 
 export async function runDavomatReminderCycle(): Promise<void> {
+  await reloadShiftCatalogIfStale();
   await broadcastDavomatRuleNotice();
   await remindPharmacyShiftWarn();
   await remindDavomatCheckIn();

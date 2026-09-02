@@ -6,6 +6,7 @@ import {
   isValidHm,
   normalizeHm,
   reloadShiftCatalog,
+  reloadShiftCatalogIfStale,
   updateShiftTemplate,
 } from "../lib/shift-catalog";
 import { ALL_SHIFTS, isValidShiftType } from "../lib/shift-hours";
@@ -16,8 +17,12 @@ function isAdminLike(role: string) {
   return role === "admin" || role === "director" || isHrRole(role);
 }
 
+function canEditGlobalShiftTemplates(role: string): boolean {
+  return isAdminLike(role) || role === "koordinator" || role === "mudir";
+}
+
 router.get("/shift-templates", requireAuth, async (_req, res): Promise<void> => {
-  await reloadShiftCatalog();
+  await reloadShiftCatalogIfStale();
   const shifts = getCatalogShifts().map((s) => ({
     key: s.key,
     label: s.label,
@@ -39,8 +44,8 @@ router.get("/shift-templates", requireAuth, async (_req, res): Promise<void> => 
 
 router.patch("/shift-templates/:key", requireAuth, async (req: AuthRequest, res): Promise<void> => {
   const role = req.userRole || "";
-  if (!isAdminLike(role)) {
-    res.status(403).json({ error: "Faqat admin smena vaqtini o‘zgartira oladi" });
+  if (!canEditGlobalShiftTemplates(role)) {
+    res.status(403).json({ error: "Smena vaqtini o‘zgartirish uchun ruxsat yo‘q" });
     return;
   }
   const key = String(req.params.key || "");

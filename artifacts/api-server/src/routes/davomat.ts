@@ -23,6 +23,12 @@ import {
 } from "../lib/office-location";
 import { getDayBranchOverride } from "../lib/branch-day-override";
 import {
+  findActiveSegmentContext,
+  getDayShiftSchedule,
+  hoursForSegment,
+  type ShiftSegmentPlan,
+} from "../lib/day-shift-plan";
+import {
   hoursForEmployee,
   resolveEmployeeShift,
   shiftHoursLabelForEmployee,
@@ -718,6 +724,7 @@ async function resolveDavomatPoint(
   emp: WorkplaceEmp,
   userRole: string,
   workDate?: string,
+  segment?: Pick<ShiftSegmentPlan, "branchId" | "latitude" | "longitude" | "branchName">,
 ): Promise<
   | { ok: true; point: DavomatPoint; temporary?: boolean }
   | { ok: false; status: number; body: Record<string, unknown> }
@@ -731,6 +738,27 @@ async function resolveDavomatPoint(
         longitude: office.longitude,
         label: office.label,
         kind: "office",
+      },
+    };
+  }
+
+  if (
+    segment?.latitude != null &&
+    segment?.longitude != null &&
+    Number.isFinite(segment.latitude) &&
+    Number.isFinite(segment.longitude)
+  ) {
+    const day = workDate || todayTashkent();
+    return {
+      ok: true,
+      temporary: true,
+      point: {
+        latitude: segment.latitude,
+        longitude: segment.longitude,
+        label: segment.branchName
+          ? `${segment.branchName}${day ? ` · ${day}` : ""}`
+          : "Filial",
+        kind: "branch",
       },
     };
   }
@@ -1004,12 +1032,37 @@ async function matchFaceForSessionUser(
   };
 }
 
+async function loadSegmentAttendance(employeeId: number, workDate: string) {
+  const rows = await db
+    .select({
+      segmentOrder: attendanceRecordsTable.segmentOrder,
+      checkInAt: attendanceRecordsTable.checkInAt,
+      checkOutAt: attendanceRecordsTable.checkOutAt,
+      status: attendanceRecordsTable.status,
+      id: attendanceRecordsTable.id,
+    })
+    .from(attendanceRecordsTable)
+    .where(
+      and(eq(attendanceRecordsTable.employeeId, employeeId), eq(attendanceRecordsTable.workDate, workDate)),
+    );
+  return rows;
+}
+
+async function buildDayDavomatContext(emp: WorkplaceEmp, workDate?: string) {
+  const date = workDate || todayTashkent();
+  const schedule = await getDayShiftSchedule(emp, date);
+  const records = await loadSegmentAttendance(emp.id, date);
+  const active = findActiveSegmentContext(schedule, records);
+  return { workDate: date, schedule, records, active };
+}
+
 async function geoGate(
   emp: WorkplaceEmp,
   userRole: string,
   latitude: number,
   longitude: number,
   _accuracyMeters?: number,
+  workDate?: string,
 ): Promise<
   | { ok: true; distanceMeters: number; effectiveRadius: number; point: DavomatPoint }
   | {
@@ -1018,10 +1071,12 @@ async function geoGate(
       body: Record<string, unknown>;
     }
 > {
-  const resolved = await resolveDavomatPoint(emp, userRole);
+  const ctx = await buildDayDavomatContext(emp, workDate);
+  const seg = ctx.active.segment;
+  const skipGeofence = seg.skipGeofence || shiftSkipsGeofenceForEmployee(emp);
+  const resolved = await resolveDavomatPoint(emp, userRole, ctx.workDate, seg);
   if (!resolved.ok) {
-    // Masofadan / erkin grafik — filial GPS yo‘q bo‘lsa ham davomatga ruxsat
-    if (shiftSkipsGeofenceForEmployee(emp)) {
+    if (skipGeofence) {
       const office = await getOfficeLocation();
       return {
         ok: true,
@@ -1038,12 +1093,15 @@ async function geoGate(
     return resolved;
   }
   const point = resolved.point;
-  if (shiftSkipsGeofenceForEmployee(emp)) {
+  if (skipGeofence) {
     return {
       ok: true,
       distanceMeters: 0,
       effectiveRadius: 0,
-      point: { ...point, label: `${point.label} · ${shiftHoursLabelForEmployee(emp)}` },
+      point: {
+        ...point,
+        label: `${point.label} · ${seg.label}: ${seg.start}–${seg.end}`,
+      },
     };
   }
   const distanceMeters = haversineMeters(latitude, longitude, point.latitude, point.longitude);
@@ -1080,17 +1138,19 @@ function oncePerDayFail(
   emp: WorkplaceEmp,
   rec: { checkInAt: Date | null; checkOutAt: Date | null } | undefined,
   code: "already_in" | "already_complete",
+  segmentLabel?: string,
 ): PunchFail {
   const checkIn = formatHm(rec?.checkInAt ?? null);
   const checkOut = formatHm(rec?.checkOutAt ?? null);
+  const seg = segmentLabel ? ` (${segmentLabel})` : "";
   return {
     ok: false,
     status: 400,
     body: {
       error:
         code === "already_complete"
-          ? `Bugun allaqachon Keldim (${checkIn}) va Ketdim (${checkOut}). Kuniga faqat 1 marta.`
-          : `Bugun allaqachon Keldim: ${checkIn}. Qayta belgilab bo‘lmaydi.`,
+          ? `Bu smena${seg} uchun allaqachon Keldim (${checkIn}) va Ketdim (${checkOut}).`
+          : `Bu smena${seg} uchun allaqachon Keldim: ${checkIn}. Qayta belgilab bo‘lmaydi.`,
       code,
       fullName: emp.fullName,
       checkIn,
@@ -1113,12 +1173,49 @@ async function applyFacePunch(opts: {
   | PunchFail
 > {
   const { emp, latitude, longitude, distanceMeters, faceProfileId, action } = opts;
-  const hours = hoursForEmployee(emp);
-  const workDate = todayTashkent();
+  const ctx = await buildDayDavomatContext(emp);
+  const { workDate, active, schedule } = ctx;
+  const segmentOrder = active.segmentOrder;
+  const seg = active.segment;
+  const hours = hoursForSegment(seg);
   const now = new Date();
+
+  if (action === "in" && active.nextAction !== "in") {
+    if (active.allDone) {
+      return oncePerDayFail(emp, active.record, "already_complete", seg.label);
+    }
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: `Avval «${active.segment.label}» smenasida Ketdim ni belgilang`,
+        code: "need_check_out",
+        fullName: emp.fullName,
+        segmentOrder,
+        nextAction: active.nextAction,
+      },
+    };
+  }
+  if (action === "out" && active.nextAction !== "out") {
+    if (active.nextAction === "done") {
+      return oncePerDayFail(emp, active.record, "already_complete", seg.label);
+    }
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: "Avval Keldim ni belgilang",
+        code: "need_check_in",
+        fullName: emp.fullName,
+        segmentOrder,
+      },
+    };
+  }
+
   const dateFilter = and(
     eq(attendanceRecordsTable.employeeId, emp.id),
     eq(attendanceRecordsTable.workDate, workDate),
+    eq(attendanceRecordsTable.segmentOrder, segmentOrder),
   );
 
   const geoFields = {
@@ -1128,6 +1225,10 @@ async function applyFacePunch(opts: {
     source: "face" as const,
     userId: emp.userId,
     updatedAt: now,
+    shiftType: seg.shiftType,
+    shiftStart: seg.start,
+    shiftEnd: seg.end,
+    branchId: seg.branchId,
   };
 
   try {
@@ -1140,10 +1241,10 @@ async function applyFacePunch(opts: {
         .for("update");
 
       if (existing?.checkOutAt) {
-        return oncePerDayFail(emp, existing, "already_complete");
+        return oncePerDayFail(emp, existing, "already_complete", seg.label);
       }
       if (action === "in" && existing?.checkInAt) {
-        return oncePerDayFail(emp, existing, "already_in");
+        return oncePerDayFail(emp, existing, "already_in", seg.label);
       }
       if (action === "out" && !existing?.checkInAt) {
         return {
@@ -1173,6 +1274,7 @@ async function applyFacePunch(opts: {
             employeeId: emp.id,
             userId: emp.userId,
             workDate,
+            segmentOrder,
             checkInAt,
             status,
             ...geoFields,
@@ -1195,22 +1297,41 @@ async function applyFacePunch(opts: {
         .where(eq(faceProfilesTable.id, faceProfileId));
 
       const metrics = computeMetrics(workDate, checkInAt, checkOutAt, null, hours);
+      const nextCtx = findActiveSegmentContext(
+        schedule,
+        (await tx
+          .select({
+            segmentOrder: attendanceRecordsTable.segmentOrder,
+            checkInAt: attendanceRecordsTable.checkInAt,
+            checkOutAt: attendanceRecordsTable.checkOutAt,
+          })
+          .from(attendanceRecordsTable)
+          .where(
+            and(eq(attendanceRecordsTable.employeeId, emp.id), eq(attendanceRecordsTable.workDate, workDate)),
+          )) as { segmentOrder: number; checkInAt: Date | null; checkOutAt: Date | null }[],
+      );
+
       return {
         ok: true as const,
         payload: {
           ok: true,
           action,
           workDate,
+          segmentOrder,
+          segmentLabel: seg.label,
+          segmentHours: `${seg.start}–${seg.end}`,
           fullName: emp.fullName,
-          location: emp.location,
+          location: seg.branchName || emp.location,
           distanceMeters,
           allowedMeters: DAVOMAT_GEOFENCE_METERS,
           checkInAt: checkInAt ? checkInAt.toISOString() : null,
           checkOutAt: checkOutAt ? checkOutAt.toISOString() : null,
+          nextAction: nextCtx.nextAction,
+          multiShift: schedule.length > 1,
           message:
             action === "in"
-              ? `${emp.fullName}: Keldim (${metrics.checkIn})`
-              : `${emp.fullName}: Ketdi (${metrics.checkOut}). Ishlangan ${metrics.workedHours}`,
+              ? `${emp.fullName}: ${seg.label} — Keldim (${metrics.checkIn})`
+              : `${emp.fullName}: ${seg.label} — Ketdi (${metrics.checkOut}). Ishlangan ${metrics.workedHours}`,
           ...metrics,
         },
       };
@@ -1222,8 +1343,8 @@ async function applyFacePunch(opts: {
         .from(attendanceRecordsTable)
         .where(dateFilter)
         .limit(1);
-      if (existing?.checkOutAt) return oncePerDayFail(emp, existing, "already_complete");
-      if (existing?.checkInAt) return oncePerDayFail(emp, existing, "already_in");
+      if (existing?.checkOutAt) return oncePerDayFail(emp, existing, "already_complete", seg.label);
+      if (existing?.checkInAt) return oncePerDayFail(emp, existing, "already_in", seg.label);
     }
     throw err;
   }
@@ -1312,28 +1433,22 @@ router.get("/davomat/me/workplace", requireAuth, async (req: AuthRequest, res): 
       return;
     }
     const emp = await ensureEmployeeForUser(user);
-    const resolved = await resolveDavomatPoint(emp, user.role);
+    const ctx = await buildDayDavomatContext(emp);
+    const { workDate, schedule, active, records } = ctx;
+    const seg = active.segment;
+    const resolved = await resolveDavomatPoint(emp, user.role, workDate, seg);
     const office = await getOfficeLocation();
-    const skipGps = shiftSkipsGeofenceForEmployee(emp);
+    const skipGps = seg.skipGeofence || shiftSkipsGeofenceForEmployee(emp);
     const point = resolved.ok
       ? resolved.point
       : {
           latitude: office.latitude,
           longitude: office.longitude,
-          label: skipGps ? shiftHoursLabelForEmployee(emp) : office.label,
+          label: skipGps ? `${seg.label}: ${seg.start}–${seg.end}` : office.label,
           kind: "office" as const,
         };
-    const workDate = todayTashkent();
-    const [rec] = await db
-      .select()
-      .from(attendanceRecordsTable)
-      .where(
-        and(
-          eq(attendanceRecordsTable.employeeId, emp.id),
-          eq(attendanceRecordsTable.workDate, workDate),
-        ),
-      )
-      .limit(1);
+
+    const activeRec = records.find((r) => r.segmentOrder === active.segmentOrder);
 
     res.json({
       allowedMeters: skipGps ? 0 : DAVOMAT_GEOFENCE_METERS,
@@ -1346,28 +1461,48 @@ router.get("/davomat/me/workplace", requireAuth, async (req: AuthRequest, res): 
       gpsReady: resolved.ok || skipGps,
       gpsError: resolved.ok || skipGps ? null : String(resolved.body.error || "Filial GPS yo‘q"),
       workDate,
-      shift: (() => {
-        const w = resolveEmployeeShift(emp);
-        return {
-          type: w.key,
-          label: w.label,
-          hint: w.hint,
-          start: w.start,
-          end: w.end,
-          overnight: Boolean(w.overnight),
-          skipGeofence: Boolean(w.skipGeofence),
-          hoursNote: shiftHoursLabelForEmployee(emp),
-          warnHm: w.warnHm,
-          warnText: w.warnText,
-        };
-      })(),
+      multiShift: schedule.length > 1,
+      activeSegment: {
+        order: active.segmentOrder,
+        label: seg.label,
+        start: seg.start,
+        end: seg.end,
+        branchName: seg.branchName,
+        nextAction: active.nextAction,
+      },
+      schedule: schedule.map((s) => ({
+        order: s.segmentOrder,
+        type: s.shiftType,
+        label: s.label,
+        start: s.start,
+        end: s.end,
+        branchName: s.branchName,
+        checkIn: formatHm(records.find((r) => r.segmentOrder === s.segmentOrder)?.checkInAt ?? null),
+        checkOut: formatHm(records.find((r) => r.segmentOrder === s.segmentOrder)?.checkOutAt ?? null),
+        complete: Boolean(
+          records.find((r) => r.segmentOrder === s.segmentOrder)?.checkInAt &&
+            records.find((r) => r.segmentOrder === s.segmentOrder)?.checkOutAt,
+        ),
+      })),
+      shift: {
+        type: seg.shiftType,
+        label: seg.label,
+        hint: seg.hint,
+        start: seg.start,
+        end: seg.end,
+        overnight: seg.overnight,
+        skipGeofence: seg.skipGeofence,
+        hoursNote: `${seg.label}: ${seg.start}–${seg.end}`,
+        warnHm: seg.warnHm,
+        warnText: seg.warnText,
+      },
       employee: {
         id: emp.id,
         fullName: emp.fullName,
         location: point.label,
         latitude: point.latitude,
         longitude: point.longitude,
-        hasGps: resolved.ok || shiftSkipsGeofenceForEmployee(emp),
+        hasGps: resolved.ok || skipGps,
         shiftType: emp.shiftType,
       },
       temporaryBranch:
@@ -1378,15 +1513,17 @@ router.get("/davomat/me/workplace", requireAuth, async (req: AuthRequest, res): 
               label: resolved.point.label,
             }
           : null,
-      today: rec
+      today: activeRec
         ? {
-            checkIn: formatHm(rec.checkInAt),
-            checkOut: formatHm(rec.checkOutAt),
-            checkInAt: rec.checkInAt ? rec.checkInAt.toISOString() : null,
-            checkOutAt: rec.checkOutAt ? rec.checkOutAt.toISOString() : null,
-            status: rec.status,
-            complete: Boolean(rec.checkInAt && rec.checkOutAt),
-            nextAction: !rec.checkInAt ? "in" : !rec.checkOutAt ? "out" : "done",
+            checkIn: formatHm(activeRec.checkInAt),
+            checkOut: formatHm(activeRec.checkOutAt),
+            checkInAt: activeRec.checkInAt ? activeRec.checkInAt.toISOString() : null,
+            checkOutAt: activeRec.checkOutAt ? activeRec.checkOutAt.toISOString() : null,
+            status: activeRec.status,
+            complete: Boolean(activeRec.checkInAt && activeRec.checkOutAt),
+            nextAction: active.nextAction,
+            segmentOrder: active.segmentOrder,
+            segmentLabel: seg.label,
           }
         : {
             checkIn: "—",
@@ -1395,7 +1532,9 @@ router.get("/davomat/me/workplace", requireAuth, async (req: AuthRequest, res): 
             checkOutAt: null,
             status: "absent",
             complete: false,
-            nextAction: "in",
+            nextAction: active.nextAction,
+            segmentOrder: active.segmentOrder,
+            segmentLabel: seg.label,
           },
     });
   } catch (err) {
@@ -1438,21 +1577,11 @@ router.get("/davomat/me/status", requireAuth, async (req: AuthRequest, res): Pro
 
     if (emp) {
       fullName = emp.fullName;
-      const [rec] = await db
-        .select()
-        .from(attendanceRecordsTable)
-        .where(
-          and(
-            eq(attendanceRecordsTable.employeeId, emp.id),
-            eq(attendanceRecordsTable.workDate, workDate),
-          ),
-        )
-        .limit(1);
-      checkIn = formatHm(rec?.checkInAt ?? null);
-      checkOut = formatHm(rec?.checkOutAt ?? null);
-      if (!rec?.checkInAt) nextAction = "in";
-      else if (!rec.checkOutAt) nextAction = "out";
-      else nextAction = "done";
+      const ctx = await buildDayDavomatContext(emp, workDate);
+      const activeRec = ctx.records.find((r) => r.segmentOrder === ctx.active.segmentOrder);
+      checkIn = formatHm(activeRec?.checkInAt ?? null);
+      checkOut = formatHm(activeRec?.checkOutAt ?? null);
+      nextAction = ctx.active.nextAction;
     }
 
     const messages: Record<string, string> = {
@@ -1573,18 +1702,8 @@ router.post("/davomat/face-verify", requireAuth, async (req: AuthRequest, res): 
       return;
     }
     await maybeBackfillFacePhoto(resolved.faceId, req.body?.snapshot ?? req.body?.photo);
-    const workDate = todayTashkent();
-    const [rec] = await db
-      .select()
-      .from(attendanceRecordsTable)
-      .where(
-        and(
-          eq(attendanceRecordsTable.employeeId, resolved.emp.id),
-          eq(attendanceRecordsTable.workDate, workDate),
-        ),
-      )
-      .limit(1);
-    const nextAction = !rec?.checkInAt ? "in" : !rec.checkOutAt ? "out" : "done";
+    const ctx = await buildDayDavomatContext(resolved.emp);
+    const activeRec = ctx.records.find((r) => r.segmentOrder === ctx.active.segmentOrder);
     const own = await ownEmployeeReport(resolved.emp.id);
     res.json({
       ok: true,
@@ -1592,12 +1711,22 @@ router.post("/davomat/face-verify", requireAuth, async (req: AuthRequest, res): 
       employeeId: resolved.emp.id,
       distanceMeters: resolved.gate.distanceMeters,
       allowedMeters: resolved.gate.effectiveRadius,
-      workDate,
-      nextAction,
-      checkIn: formatHm(rec?.checkInAt ?? null),
-      checkOut: formatHm(rec?.checkOutAt ?? null),
-      checkInAt: rec?.checkInAt ? rec.checkInAt.toISOString() : null,
-      checkOutAt: rec?.checkOutAt ? rec.checkOutAt.toISOString() : null,
+      workDate: ctx.workDate,
+      nextAction: ctx.active.nextAction,
+      segmentOrder: ctx.active.segmentOrder,
+      segmentLabel: ctx.active.segment.label,
+      segmentHours: `${ctx.active.segment.start}–${ctx.active.segment.end}`,
+      multiShift: ctx.schedule.length > 1,
+      schedule: ctx.schedule.map((s) => ({
+        order: s.segmentOrder,
+        label: s.label,
+        start: s.start,
+        end: s.end,
+      })),
+      checkIn: formatHm(activeRec?.checkInAt ?? null),
+      checkOut: formatHm(activeRec?.checkOutAt ?? null),
+      checkInAt: activeRec?.checkInAt ? activeRec.checkInAt.toISOString() : null,
+      checkOutAt: activeRec?.checkOutAt ? activeRec.checkOutAt.toISOString() : null,
       employee: own.employee,
       sessionSwitched: false,
     });

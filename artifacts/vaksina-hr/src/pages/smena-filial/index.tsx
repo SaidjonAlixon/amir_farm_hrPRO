@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Clock3, MapPin, Search, Settings2, UserRound, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, CalendarDays, MapPin, Plus, Search, Settings2, Trash2, UserRound, X } from "lucide-react";
 import { Card, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -8,15 +8,15 @@ import { useToast } from "../../hooks/use-toast";
 import { cn } from "../../lib/utils";
 import {
   assignSmenaBranch,
-  deleteDayBranchOverride,
-  fetchDayBranchOverrides,
+  deleteDayShiftPlan,
+  fetchDayShiftPlans,
   fetchSmenaMe,
   fetchShiftTemplates,
-  saveDayBranchOverride,
+  saveDayShiftPlan,
   saveMySmena,
   saveShiftTemplate,
   shiftTypeShort,
-  type DayBranchOverrideItem,
+  type DayShiftPlanDay,
   type ShiftTemplate,
   type ShiftTypeKey,
   type SmenaAssignable,
@@ -42,8 +42,72 @@ function orgLabel(org: string | null) {
   return org || "Xodim";
 }
 
+type DaySegmentDraft = {
+  shiftType: ShiftTypeKey;
+  shiftStart: string;
+  shiftEnd: string;
+  branchId: number | null;
+};
+
+function defaultSegment(type: ShiftTypeKey, meta?: ShiftOption): DaySegmentDraft {
+  return {
+    shiftType: type,
+    shiftStart: meta?.start || "14:00",
+    shiftEnd: meta?.end || "22:00",
+    branchId: null,
+  };
+}
+
 function needsBranch(shift: ShiftTypeKey) {
   return shift !== "remote" && shift !== "flexible" && shift !== "custom";
+}
+
+function segmentNeedsTimes(type: ShiftTypeKey) {
+  return type === "custom" || type === "three";
+}
+
+const MAIN_SHIFTS: ShiftTypeKey[] = ["one", "two", "three"];
+const OTHER_SHIFTS: ShiftTypeKey[] = ["remote", "flexible", "alternate", "alternate_night"];
+
+function StepHeader({ n, title, hint }: { n: number; title: string; hint?: string }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#0b3a5c] text-[11px] font-bold text-white">
+        {n}
+      </span>
+      <div>
+        <p className="text-sm font-semibold text-slate-900">{title}</p>
+        {hint ? <p className="mt-0.5 text-[11px] leading-snug text-slate-500">{hint}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function ShiftChip({
+  label,
+  active,
+  onClick,
+  accent,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  accent?: "amber" | "default";
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-xl px-3.5 py-2 text-xs font-semibold ring-1 ring-inset transition",
+        active && accent === "amber" && "bg-amber-600 text-white ring-amber-600",
+        active && accent !== "amber" && "bg-[#0b3a5c] text-white ring-[#0b3a5c]",
+        !active && "bg-white text-slate-700 ring-slate-200 hover:ring-slate-300",
+      )}
+    >
+      {label}
+    </button>
+  );
 }
 
 function TemplateRow({
@@ -135,8 +199,8 @@ function GlobalStandardsCard({
             <div>
               <p className="text-sm font-semibold text-slate-900">Standart smena vaqtlari</p>
               <p className="mt-0.5 text-[11px] leading-snug text-slate-500">
-                1-smena, 2-smena, masofadan va boshqa barcha smenalar uchun umumiy vaqt. O‘zgarish shu smenadagi
-                barcha xodimlarga qo‘llanadi.
+                1-smena, 2-smena, 3-smena, masofadan va boshqa barcha smenalar uchun umumiy vaqt. O‘zgarish shu
+                smenadagi barcha xodimlarga qo‘llanadi.
               </p>
             </div>
           </div>
@@ -209,14 +273,19 @@ export default function SmenaFilialPage() {
       day: "2-digit",
     }).format(new Date()),
   );
-  const [dayBranchId, setDayBranchId] = useState<number | null>(null);
-  const [dayBranchQ, setDayBranchQ] = useState("");
+  const [dayPlanMode, setDayPlanMode] = useState<"single" | "multi">("single");
+  const [assignMode, setAssignMode] = useState<"permanent" | "daily">("permanent");
+  const [showOtherShifts, setShowOtherShifts] = useState(false);
+  const [daySegments, setDaySegments] = useState<DaySegmentDraft[]>([
+    defaultSegment("three", { type: "three", label: "3-smena", start: "14:00", end: "22:00" }),
+  ]);
 
   const shiftOptions: ShiftOption[] = useMemo(() => {
     if (data?.shifts?.length) return data.shifts as ShiftOption[];
     return [
       { type: "one", label: "1-smena", start: "08:00", end: "17:00" },
       { type: "two", label: "2-smena", start: "18:00", end: "23:45" },
+      { type: "three", label: "3-smena", start: "14:00", end: "22:00" },
       { type: "remote", label: "Masofadan", start: "09:00", end: "18:00", skipGeofence: true },
       { type: "flexible", label: "Erkin grafik", start: "09:00", end: "21:00", skipGeofence: true },
       { type: "alternate", label: "Kun ora", start: "08:00", end: "17:00" },
@@ -269,7 +338,12 @@ export default function SmenaFilialPage() {
   const pickedBranch = (data?.branches ?? []).find((b) => b.id === pickedBranchId) ?? null;
   const branchRequired = needsBranch(pickedShift);
   const activeShiftMeta = shiftByType.get(pickedShift);
-  const canEditStandards = Boolean(data?.canEditShiftTemplates || data?.canAssignAny);
+  const canEditStandards = Boolean(data?.canEditShiftTemplates || data?.canAssignAny || data?.canAssignOthers);
+  const canEditThreeTimes = Boolean(data?.canAssignOthers);
+  const canEditShiftTimes =
+    pickedShift === "custom" || pickedShift === "three"
+      ? canEditThreeTimes || Boolean(data?.canAssignAny)
+      : canEditStandards;
   const standardDirty =
     pickedShift !== "custom" &&
     Boolean(activeShiftMeta) &&
@@ -286,41 +360,34 @@ export default function SmenaFilialPage() {
     window.setTimeout(() => setHighlightTemplate(null), 3000);
   }
 
-  const dayOverridesQ = useQuery({
-    queryKey: ["smena-day-branch", pickedPersonId],
-    queryFn: () => fetchDayBranchOverrides(pickedPersonId!),
+  const dayPlansQ = useQuery({
+    queryKey: ["smena-day-plan", pickedPersonId],
+    queryFn: () => fetchDayShiftPlans(pickedPersonId!),
     enabled: Boolean(pickedPersonId),
   });
 
-  const dayBranches = useMemo(() => {
-    const list = data?.branches ?? [];
-    const s = dayBranchQ.trim().toLowerCase();
-    if (!s) return list;
-    return list.filter((b) => `${b.name} ${b.managerName}`.toLowerCase().includes(s));
-  }, [data?.branches, dayBranchQ]);
-
-  const saveDayBranch = useMutation({
+  const saveDayPlan = useMutation({
     mutationFn: () => {
-      if (!pickedPersonId || !dayBranchId) throw new Error("Sana va filial tanlang");
-      return saveDayBranchOverride(pickedPersonId, {
-        workDate: dayDate,
-        branchId: dayBranchId,
-      });
+      if (!pickedPersonId) throw new Error("Xodim tanlanmagan");
+      const segments = daySegments.map((s) => ({
+        shiftType: s.shiftType,
+        ...(segmentNeedsTimes(s.shiftType) ? { shiftStart: s.shiftStart, shiftEnd: s.shiftEnd } : {}),
+        branchId: s.branchId ?? pickedBranchId ?? null,
+      }));
+      return saveDayShiftPlan(pickedPersonId, { workDate: dayDate, segments });
     },
     onSuccess: (r) => {
-      qc.invalidateQueries({ queryKey: ["smena-day-branch", pickedPersonId] });
-      toast({ title: "Kunlik filial saqlandi", description: r.message });
-      setDayBranchId(null);
-      setDayBranchQ("");
+      qc.invalidateQueries({ queryKey: ["smena-day-plan", pickedPersonId] });
+      toast({ title: "Kunlik smena rejasi saqlandi", description: r.message });
     },
     onError: (e: Error) => toast({ title: "Saqlanmadi", description: e.message, variant: "destructive" }),
   });
 
-  const removeDayBranch = useMutation({
-    mutationFn: (workDate: string) => deleteDayBranchOverride(pickedPersonId!, workDate),
+  const removeDayPlan = useMutation({
+    mutationFn: (workDate: string) => deleteDayShiftPlan(pickedPersonId!, workDate),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["smena-day-branch", pickedPersonId] });
-      toast({ title: "Kunlik filial o‘chirildi" });
+      qc.invalidateQueries({ queryKey: ["smena-day-plan", pickedPersonId] });
+      toast({ title: "Kunlik reja o‘chirildi" });
     },
     onError: (e: Error) => toast({ title: "O‘chirilmadi", description: e.message, variant: "destructive" }),
   });
@@ -378,6 +445,9 @@ export default function SmenaFilialPage() {
       setCustomStart(meta.start);
       setCustomEnd(meta.end);
     }
+    if (assignMode === "daily" && dayPlanMode === "single") {
+      setDaySegments([defaultSegment(type, meta)]);
+    }
   }
 
   function pickPerson(p: SmenaAssignable) {
@@ -386,12 +456,17 @@ export default function SmenaFilialPage() {
     selectShift(st);
     setPickedBranchId(p.assignedBranchId);
     setBranchQ("");
-    setDayBranchId(null);
-    setDayBranchQ("");
+    setDayPlanMode("single");
+    const meta = shiftByType.get(st);
+    setDaySegments([defaultSegment(st === "three" ? "three" : "one", meta)]);
     if (st === "custom") {
       setCustomLabel(p.shiftLabel?.replace(/:.*$/, "").trim() || p.position || "Maxsus");
       setCustomStart(p.shiftStart || "09:00");
       setCustomEnd(p.shiftEnd || "18:00");
+    } else if (st === "three") {
+      setCustomStart(p.shiftStart || meta?.start || "14:00");
+      setCustomEnd(p.shiftEnd || meta?.end || "22:00");
+      setCustomLabel("");
     } else {
       setCustomLabel(p.position || "");
     }
@@ -405,8 +480,8 @@ export default function SmenaFilialPage() {
     setCustomStart("09:00");
     setCustomEnd("18:00");
     setBranchQ("");
-    setDayBranchId(null);
-    setDayBranchQ("");
+    setDayPlanMode("single");
+    setDaySegments([defaultSegment("three", { type: "three", label: "3-smena", start: "14:00", end: "22:00" })]);
   }
 
   function onSaveTeam() {
@@ -417,6 +492,11 @@ export default function SmenaFilialPage() {
     if (pickedShift === "custom") {
       if (!customStart.trim() || !customEnd.trim()) {
         toast({ title: "Vaqt kiriting", description: "Boshlanish va tugash vaqtini belgilang.", variant: "destructive" });
+        return;
+      }
+    } else if (pickedShift === "three" && canEditThreeTimes) {
+      if (!customStart.trim() || !customEnd.trim()) {
+        toast({ title: "3-smena vaqti", description: "Boshlanish va tugash soatini kiriting.", variant: "destructive" });
         return;
       }
     } else if (branchRequired && !pickedBranchId) {
@@ -434,7 +514,49 @@ export default function SmenaFilialPage() {
             shiftStart: customStart.trim(),
             shiftEnd: customEnd.trim(),
           }
-        : {}),
+        : pickedShift === "three" && canEditThreeTimes
+          ? {
+              shiftStart: customStart.trim(),
+              shiftEnd: customEnd.trim(),
+            }
+          : {}),
+    });
+  }
+
+  const permanentSaveLabel =
+    pickedShift === "three"
+      ? "3-smenani doimiy saqlash"
+      : pickedShift === "custom"
+        ? "Maxsus grafikni saqlash"
+        : "Doimiy smena va filialni saqlash";
+
+  const timeFieldHint =
+    pickedShift === "three"
+      ? "Faqat shu xodim uchun 3-smena vaqti"
+      : pickedShift === "custom"
+        ? "Maxsus ish vaqti"
+        : canEditStandards
+          ? "Standart vaqt — o‘zgartirsangiz barcha xodimlarga ta’sir qiladi"
+          : "Standart vaqt (o‘zgartirish faqat admin uchun)";
+
+  function addDaySegment() {
+    const oneMeta = shiftByType.get("one");
+    const threeMeta = shiftByType.get("three");
+    if (daySegments.length >= 4) return;
+    const nextType: ShiftTypeKey = daySegments.some((s) => s.shiftType === "one") ? "three" : "one";
+    const meta = nextType === "three" ? threeMeta : oneMeta;
+    setDaySegments((prev) => [...prev, defaultSegment(nextType, meta)]);
+    setDayPlanMode("multi");
+  }
+
+  function updateDaySegment(idx: number, patch: Partial<DaySegmentDraft>) {
+    setDaySegments((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
+  }
+
+  function removeDaySegment(idx: number) {
+    setDaySegments((prev) => {
+      const next = prev.filter((_, i) => i !== idx);
+      return next.length ? next : [defaultSegment("three", shiftByType.get("three"))];
     });
   }
 
@@ -461,8 +583,8 @@ export default function SmenaFilialPage() {
         <h1 className="text-lg font-semibold">Smena va filial</h1>
         <p className="mt-1 text-sm text-sky-100/90">
           {isAdmin
-            ? "Yuqorida standart smena vaqtlari, pastda xodimlarga biriktirish."
-            : "Xodimni tanlang, smena va filialni belgilang."}
+            ? "Standart vaqtlar yuqorida. Xodimga doimiy yoki faqat bir kunlik reja belgilang."
+            : "Xodimni tanlang → Doimiy grafik yoki Faqat bir kun."}
         </p>
       </div>
 
@@ -543,259 +665,403 @@ export default function SmenaFilialPage() {
             {picked ? (
               <section className="space-y-4 rounded-2xl border-2 border-[#0b3a5c]/15 bg-gradient-to-b from-slate-50 to-white p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-base font-semibold text-slate-900">{picked.fullName}</p>
                     <p className="text-xs text-slate-500">{picked.position || orgLabel(picked.orgRole)}</p>
+                    <div className="mt-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[11px] text-slate-600">
+                      <span className="font-medium text-slate-800">Hozir:</span>{" "}
+                      {picked.shiftLabel || shiftTypeShort(picked.shiftType)}
+                      {picked.assignedBranchName ? ` · ${picked.assignedBranchName}` : " · filial yo‘q"}
+                    </div>
                   </div>
                   <button type="button" onClick={cancelEdit} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
                     <X className="h-4 w-4" />
                   </button>
                 </div>
 
-                <div className="space-y-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Smena turi</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {shiftOptions.map((s) => (
-                      <button
-                        key={s.type}
-                        type="button"
-                        onClick={() => selectShift(s.type)}
-                        className={cn(
-                          "rounded-full px-3 py-1.5 text-xs font-medium ring-1 ring-inset transition",
-                          pickedShift === s.type
-                            ? "bg-[#0b3a5c] text-white ring-[#0b3a5c]"
-                            : "bg-white text-slate-700 ring-slate-200 hover:ring-slate-300",
-                        )}
-                      >
-                        {s.label}
-                      </button>
-                    ))}
-                    {isAdmin ? (
-                      <button
-                        type="button"
-                        onClick={() => selectShift("custom")}
-                        className={cn(
-                          "rounded-full px-3 py-1.5 text-xs font-medium ring-1 ring-inset transition",
-                          pickedShift === "custom"
-                            ? "bg-amber-600 text-white ring-amber-600"
-                            : "bg-white text-amber-800 ring-amber-200 hover:ring-amber-300",
-                        )}
-                      >
-                        Maxsus vaqt
-                      </button>
-                    ) : null}
-                  </div>
+                {/* Rejim tanlash */}
+                <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setAssignMode("permanent")}
+                    className={cn(
+                      "rounded-lg px-3 py-2.5 text-left transition",
+                      assignMode === "permanent" ? "bg-white shadow-sm ring-1 ring-slate-200" : "text-slate-600",
+                    )}
+                  >
+                    <p className="text-xs font-bold text-slate-900">Doimiy grafik</p>
+                    <p className="mt-0.5 text-[10px] leading-snug text-slate-500">Har kuni shu smena va filial</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAssignMode("daily")}
+                    className={cn(
+                      "rounded-lg px-3 py-2.5 text-left transition",
+                      assignMode === "daily" ? "bg-white shadow-sm ring-1 ring-amber-200" : "text-slate-600",
+                    )}
+                  >
+                    <p className="text-xs font-bold text-amber-950">Faqat bir kun</p>
+                    <p className="mt-0.5 text-[10px] leading-snug text-slate-500">Boshqa sana / vaqt / filial</p>
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-[11px] font-medium text-slate-600">Boshlanish</label>
-                    <Input
-                      type="time"
-                      value={customStart}
-                      onChange={(e) => setCustomStart(e.target.value)}
-                      disabled={!canEditStandards && pickedShift !== "custom"}
-                      className={cn(
-                        "h-10 rounded-xl",
-                        !canEditStandards && pickedShift !== "custom" && "bg-slate-100 text-slate-600",
-                      )}
+                {assignMode === "permanent" ? (
+                  <div className="space-y-4">
+                    <StepHeader
+                      n={1}
+                      title="Smena turini tanlang"
+                      hint="Asosiy smenalar: 1-kunduzgi, 2-kechki, 3-qo‘shimcha"
                     />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-[11px] font-medium text-slate-600">Tugash</label>
-                    <Input
-                      type="time"
-                      value={customEnd}
-                      onChange={(e) => setCustomEnd(e.target.value)}
-                      disabled={!canEditStandards && pickedShift !== "custom"}
-                      className={cn(
-                        "h-10 rounded-xl",
-                        !canEditStandards && pickedShift !== "custom" && "bg-slate-100 text-slate-600",
-                      )}
-                    />
-                  </div>
-                </div>
-
-                {pickedShift === "custom" ? (
-                  <div>
-                    <label className="mb-1 block text-[11px] font-medium text-slate-600">Lavozim / izoh</label>
-                    <Input
-                      value={customLabel}
-                      onChange={(e) => setCustomLabel(e.target.value)}
-                      placeholder="Masalan: Buxgalter"
-                      className="h-10 rounded-xl"
-                    />
-                  </div>
-                ) : canEditStandards ? (
-                  <div className="space-y-2 rounded-xl border border-sky-200 bg-sky-50 p-3">
-                    <p className="text-xs text-sky-950">
-                      <Clock3 className="mr-1 inline h-3.5 w-3.5" />
-                      Yuqoridagi vaqt — <b>{activeShiftMeta?.label || shiftTypeShort(pickedShift)}</b> standarti.
-                      O‘zgartirsangiz, shu smenadagi <b>barcha xodimlarga</b> qo‘llanadi.
-                    </p>
-                    <Button
+                    <div className="flex flex-wrap gap-2">
+                      {MAIN_SHIFTS.map((t) => (
+                        <ShiftChip
+                          key={t}
+                          label={shiftByType.get(t)?.label || shiftTypeShort(t)}
+                          active={pickedShift === t}
+                          onClick={() => selectShift(t)}
+                          accent={t === "three" ? "amber" : "default"}
+                        />
+                      ))}
+                    </div>
+                    <button
                       type="button"
-                      className="h-10 w-full bg-[#0b3a5c] hover:bg-[#0a3350]"
-                      disabled={!standardDirty || saveTemplate.isPending}
-                      onClick={saveStandardFromPanel}
+                      onClick={() => setShowOtherShifts((v) => !v)}
+                      className="flex w-full items-center justify-between rounded-lg border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
                     >
-                      <Settings2 className="mr-1.5 h-4 w-4" />
-                      {saveTemplate.isPending ? "Saqlanmoqda…" : "Standart vaqtni saqlash"}
-                    </Button>
-                  </div>
-                ) : activeShiftMeta ? (
-                  <p className="rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-900">
-                    <Clock3 className="mr-1 inline h-3.5 w-3.5" />
-                    Standart: {activeShiftMeta.start}–{activeShiftMeta.end}
-                  </p>
-                ) : null}
+                      <span>Boshqa smenalar (masofadan, erkin, kun ora…)</span>
+                      {showOtherShifts ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </button>
+                    {showOtherShifts ? (
+                      <div className="flex flex-wrap gap-1.5 pl-1">
+                        {OTHER_SHIFTS.map((t) => (
+                          <ShiftChip
+                            key={t}
+                            label={shiftByType.get(t)?.label || shiftTypeShort(t)}
+                            active={pickedShift === t}
+                            onClick={() => selectShift(t)}
+                          />
+                        ))}
+                        {isAdmin ? (
+                          <ShiftChip
+                            label="Maxsus vaqt"
+                            active={pickedShift === "custom"}
+                            onClick={() => selectShift("custom")}
+                            accent="amber"
+                          />
+                        ) : null}
+                      </div>
+                    ) : null}
 
-                {branchRequired ? (
-                  <div className="space-y-2">
-                    <p className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
-                      <MapPin className="h-3.5 w-3.5" />
-                      Filial {pickedBranch ? `· ${pickedBranch.name}` : ""}
-                    </p>
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                      <Input
-                        value={branchQ}
-                        onChange={(e) => setBranchQ(e.target.value)}
-                        placeholder="Filial qidirish…"
-                        className="h-9 rounded-xl pl-9"
-                      />
-                    </div>
-                    <div className="max-h-36 overflow-y-auto rounded-xl border border-slate-100">
-                      {branches.map((b) => {
-                        const on = pickedBranchId === b.id;
-                        return (
-                          <button
-                            key={b.id}
-                            type="button"
-                            onClick={() => setPickedBranchId(b.id)}
-                            className={cn(
-                              "flex w-full items-center justify-between px-3 py-2 text-left text-sm",
-                              on ? "bg-sky-50 font-medium text-sky-900" : "hover:bg-slate-50",
-                            )}
-                          >
-                            {b.name}
-                            {on ? <Check className="h-4 w-4" /> : null}
-                          </button>
-                        );
-                      })}
-                      {branches.length === 0 ? (
-                        <p className="px-3 py-4 text-center text-xs text-slate-400">Filial topilmadi</p>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-                    Bu smenada filial GPS talab qilinmaydi.
-                  </p>
-                )}
-
-                <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
-                  <div>
-                    <p className="text-sm font-semibold text-amber-950">Kunlik boshqa filial</p>
-                    <p className="mt-0.5 text-[11px] leading-snug text-amber-900/80">
-                      Faqat tanlangan kunda shu filialda davomat qabul qilinadi. Keyin yana o‘z filialiga (
-                      {dayOverridesQ.data?.homeBranchName || picked.assignedBranchName || "asosiy"}) qaytadi.
-                      Doimiy filial o‘zgarmaydi.
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-1 block text-[11px] font-medium text-amber-950">Sana</label>
-                      <Input
-                        type="date"
-                        value={dayDate}
-                        onChange={(e) => setDayDate(e.target.value)}
-                        className="h-10 rounded-xl bg-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-[11px] font-medium text-amber-950">
-                        Filial {dayBranchId ? `· ${(data?.branches ?? []).find((b) => b.id === dayBranchId)?.name || ""}` : ""}
-                      </label>
-                      <div className="relative">
-                        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <StepHeader n={2} title="Ish vaqti" hint={timeFieldHint} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-slate-600">Boshlanish</label>
                         <Input
-                          value={dayBranchQ}
-                          onChange={(e) => setDayBranchQ(e.target.value)}
-                          placeholder="Filial qidirish…"
-                          className="h-10 rounded-xl bg-white pl-9"
+                          type="time"
+                          value={customStart}
+                          onChange={(e) => setCustomStart(e.target.value)}
+                          disabled={!canEditShiftTimes}
+                          className={cn("h-10 rounded-xl", !canEditShiftTimes && "bg-slate-100 text-slate-600")}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-slate-600">Tugash</label>
+                        <Input
+                          type="time"
+                          value={customEnd}
+                          onChange={(e) => setCustomEnd(e.target.value)}
+                          disabled={!canEditShiftTimes}
+                          className={cn("h-10 rounded-xl", !canEditShiftTimes && "bg-slate-100 text-slate-600")}
                         />
                       </div>
                     </div>
-                  </div>
-                  <div className="max-h-28 overflow-y-auto rounded-xl border border-amber-100 bg-white">
-                    {dayBranches.map((b) => {
-                      const on = dayBranchId === b.id;
-                      return (
-                        <button
-                          key={b.id}
-                          type="button"
-                          onClick={() => setDayBranchId(b.id)}
-                          className={cn(
-                            "flex w-full items-center justify-between px-3 py-2 text-left text-sm",
-                            on ? "bg-amber-100 font-medium text-amber-950" : "hover:bg-slate-50",
-                          )}
-                        >
-                          {b.name}
-                          {on ? <Check className="h-4 w-4" /> : null}
-                        </button>
-                      );
-                    })}
-                    {dayBranches.length === 0 ? (
-                      <p className="px-3 py-3 text-center text-xs text-slate-400">Filial topilmadi</p>
-                    ) : null}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-10 w-full border-amber-300 bg-white text-amber-950 hover:bg-amber-100"
-                    disabled={!dayBranchId || saveDayBranch.isPending}
-                    onClick={() => saveDayBranch.mutate()}
-                  >
-                    <MapPin className="mr-1.5 h-4 w-4" />
-                    {saveDayBranch.isPending ? "Saqlanmoqda…" : "Shu kunga vaqtinchalik filialni saqlash"}
-                  </Button>
 
-                  {(dayOverridesQ.data?.items?.length ?? 0) > 0 ? (
-                    <div className="space-y-1.5 border-t border-amber-200/80 pt-2">
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-amber-900/70">
-                        Rejalashtirilgan kunlar
-                      </p>
-                      {(dayOverridesQ.data?.items as DayBranchOverrideItem[]).map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-xs text-slate-800"
+                    {pickedShift === "custom" ? (
+                      <div>
+                        <label className="mb-1 block text-[11px] font-medium text-slate-600">Izoh / lavozim</label>
+                        <Input
+                          value={customLabel}
+                          onChange={(e) => setCustomLabel(e.target.value)}
+                          placeholder="Masalan: Buxgalter"
+                          className="h-10 rounded-xl"
+                        />
+                      </div>
+                    ) : null}
+
+                    {canEditStandards && pickedShift !== "custom" && pickedShift !== "three" && standardDirty ? (
+                      <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
+                        <p className="text-[11px] text-sky-900">
+                          Eslatma: vaqtni o‘zgartirib «Standartni saqlash» bossangiz, <b>barcha</b>{" "}
+                          {activeShiftMeta?.label} xodimlariga qo‘llanadi.
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 h-8 border-sky-300 bg-white text-xs"
+                          disabled={saveTemplate.isPending}
+                          onClick={saveStandardFromPanel}
                         >
-                          <span>
-                            <b>{item.workDate}</b> · {item.branchName}
-                          </span>
-                          <button
-                            type="button"
-                            className="rounded px-1.5 py-0.5 text-rose-600 hover:bg-rose-50"
-                            disabled={removeDayBranch.isPending}
-                            onClick={() => removeDayBranch.mutate(item.workDate)}
-                          >
-                            O‘chirish
-                          </button>
+                          <Settings2 className="mr-1 h-3 w-3" />
+                          Standart vaqtni saqlash (hamma uchun)
+                        </Button>
+                      </div>
+                    ) : null}
+
+                    {branchRequired ? (
+                      <>
+                        <StepHeader
+                          n={3}
+                          title="Doimiy filial"
+                          hint="Davomat faqat shu filial GPS (35 m) da qabul qilinadi"
+                        />
+                        <div className="space-y-2">
+                          {pickedBranch ? (
+                            <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs font-medium text-sky-900">
+                              Tanlangan: {pickedBranch.name}
+                            </p>
+                          ) : null}
+                          <div className="relative">
+                            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                            <Input
+                              value={branchQ}
+                              onChange={(e) => setBranchQ(e.target.value)}
+                              placeholder="Filial qidirish…"
+                              className="h-9 rounded-xl pl-9"
+                            />
+                          </div>
+                          <div className="max-h-32 overflow-y-auto rounded-xl border border-slate-100">
+                            {branches.map((b) => {
+                              const on = pickedBranchId === b.id;
+                              return (
+                                <button
+                                  key={b.id}
+                                  type="button"
+                                  onClick={() => setPickedBranchId(b.id)}
+                                  className={cn(
+                                    "flex w-full items-center justify-between px-3 py-2 text-left text-sm",
+                                    on ? "bg-sky-50 font-medium text-sky-900" : "hover:bg-slate-50",
+                                  )}
+                                >
+                                  {b.name}
+                                  {on ? <Check className="h-4 w-4" /> : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                        Bu smenada filial GPS talab qilinmaydi.
+                      </p>
+                    )}
+
+                    <Button
+                      type="button"
+                      className={cn(
+                        "h-11 w-full rounded-xl text-base font-medium",
+                        pickedShift === "three" ? "bg-amber-600 hover:bg-amber-700" : "bg-[#0b3a5c] hover:bg-[#0a3350]",
+                      )}
+                      disabled={saveAssign.isPending}
+                      onClick={onSaveTeam}
+                    >
+                      {saveAssign.isPending ? "Saqlanmoqda…" : permanentSaveLabel}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
+                    <StepHeader
+                      n={1}
+                      title="Qaysi kun?"
+                      hint="Faqat shu sanada quyidagi reja ishlaydi. Ertasi kun doimiy grafikka qaytadi."
+                    />
+                    <Input
+                      type="date"
+                      value={dayDate}
+                      onChange={(e) => setDayDate(e.target.value)}
+                      className="h-10 rounded-xl bg-white"
+                    />
+
+                    <StepHeader
+                      n={2}
+                      title="Kun rejasi turi"
+                      hint="Bitta smena yoki bir kunda 1-smena + 3-smena kabi bir nechta smena"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDayPlanMode("single");
+                          setDaySegments([
+                            defaultSegment(
+                              pickedShift === "three" ? "three" : pickedShift === "two" ? "two" : "one",
+                              activeShiftMeta,
+                            ),
+                          ]);
+                        }}
+                        className={cn(
+                          "rounded-xl border px-3 py-2.5 text-left transition",
+                          dayPlanMode === "single"
+                            ? "border-amber-500 bg-white shadow-sm"
+                            : "border-amber-200 bg-amber-50/80",
+                        )}
+                      >
+                        <p className="text-xs font-bold text-amber-950">Bitta smena</p>
+                        <p className="text-[10px] text-slate-500">Masalan, faqat 3-smena</p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDayPlanMode("multi");
+                          if (daySegments.length < 2) {
+                            setDaySegments([
+                              defaultSegment("one", shiftByType.get("one")),
+                              defaultSegment("three", shiftByType.get("three")),
+                            ]);
+                          }
+                        }}
+                        className={cn(
+                          "rounded-xl border px-3 py-2.5 text-left transition",
+                          dayPlanMode === "multi"
+                            ? "border-amber-500 bg-white shadow-sm"
+                            : "border-amber-200 bg-amber-50/80",
+                        )}
+                      >
+                        <p className="text-xs font-bold text-amber-950">2 ta smena</p>
+                        <p className="text-[10px] text-slate-500">Masalan, 1-smena + 3-smena</p>
+                      </button>
+                    </div>
+
+                    <StepHeader n={3} title="Smena va vaqt" hint="Har smena uchun alohida Keldim/Ketdim bo‘ladi" />
+
+                    <div className="space-y-2">
+                      {daySegments.map((seg, idx) => (
+                        <div key={idx} className="space-y-2 rounded-xl border border-amber-100 bg-white p-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-bold text-slate-800">
+                              {dayPlanMode === "multi" ? `${idx + 1}-smena` : "Shu kun smenasi"}
+                            </p>
+                            {dayPlanMode === "multi" && daySegments.length > 1 ? (
+                              <button type="button" className="text-rose-500" onClick={() => removeDaySegment(idx)}>
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            ) : null}
+                          </div>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {MAIN_SHIFTS.map((t) => (
+                              <button
+                                key={t}
+                                type="button"
+                                onClick={() => {
+                                  const meta = shiftByType.get(t);
+                                  updateDaySegment(idx, {
+                                    shiftType: t,
+                                    shiftStart: meta?.start || seg.shiftStart,
+                                    shiftEnd: meta?.end || seg.shiftEnd,
+                                  });
+                                }}
+                                className={cn(
+                                  "rounded-lg py-1.5 text-[11px] font-semibold ring-1 ring-inset",
+                                  seg.shiftType === t
+                                    ? "bg-amber-600 text-white ring-amber-600"
+                                    : "bg-slate-50 text-slate-600 ring-slate-200",
+                                )}
+                              >
+                                {shiftTypeShort(t)}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="mb-0.5 block text-[10px] text-slate-500">Dan</label>
+                              <Input
+                                type="time"
+                                value={seg.shiftStart}
+                                onChange={(e) => updateDaySegment(idx, { shiftStart: e.target.value })}
+                                className="h-9 rounded-lg bg-white text-xs"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-0.5 block text-[10px] text-slate-500">Gacha</label>
+                              <Input
+                                type="time"
+                                value={seg.shiftEnd}
+                                onChange={(e) => updateDaySegment(idx, { shiftEnd: e.target.value })}
+                                className="h-9 rounded-lg bg-white text-xs"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="mb-0.5 block text-[10px] text-slate-500">Filial (ixtiyoriy)</label>
+                            <select
+                              value={seg.branchId ?? ""}
+                              onChange={(e) =>
+                                updateDaySegment(idx, {
+                                  branchId: e.target.value ? Number(e.target.value) : null,
+                                })
+                              }
+                              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs"
+                            >
+                              <option value="">Asosiy filial (yuqoridagi doimiy)</option>
+                              {(data?.branches ?? []).map((b) => (
+                                <option key={b.id} value={b.id}>
+                                  {b.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
                       ))}
                     </div>
-                  ) : null}
-                </div>
 
-                <Button
-                  type="button"
-                  className="h-11 w-full rounded-xl bg-[#0b3a5c] text-base font-medium hover:bg-[#0a3350]"
-                  disabled={saveAssign.isPending}
-                  onClick={onSaveTeam}
-                >
-                  {saveAssign.isPending ? "Saqlanmoqda…" : "Doimiy smena/filialni saqlash"}
-                </Button>
+                    {dayPlanMode === "multi" && daySegments.length < 4 ? (
+                      <Button type="button" variant="outline" className="h-9 w-full border-amber-300 bg-white text-xs" onClick={addDaySegment}>
+                        <Plus className="mr-1 h-3.5 w-3.5" />
+                        Yana smena qo‘shish
+                      </Button>
+                    ) : null}
+
+                    <Button
+                      type="button"
+                      className="h-11 w-full rounded-xl bg-amber-600 text-base font-medium hover:bg-amber-700"
+                      disabled={saveDayPlan.isPending}
+                      onClick={() => saveDayPlan.mutate()}
+                    >
+                      <CalendarDays className="mr-1.5 h-4 w-4" />
+                      {saveDayPlan.isPending ? "Saqlanmoqda…" : `${dayDate} kunini saqlash`}
+                    </Button>
+
+                    {(dayPlansQ.data?.days?.length ?? 0) > 0 ? (
+                      <div className="space-y-1.5 border-t border-amber-200 pt-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-900/70">
+                          Reja qilingan kunlar
+                        </p>
+                        {(dayPlansQ.data?.days as DayShiftPlanDay[]).map((day) => (
+                          <div key={day.workDate} className="flex items-start justify-between gap-2 rounded-lg bg-white px-2.5 py-2 text-xs">
+                            <div>
+                              <b>{day.workDate}</b>
+                              {day.segments.map((s, i) => (
+                                <p key={s.id} className="text-[11px] text-slate-600">
+                                  {shiftTypeShort(s.shiftType)} {s.shiftStart}–{s.shiftEnd}
+                                  {s.branchName ? ` · ${s.branchName}` : ""}
+                                </p>
+                              ))}
+                            </div>
+                            <button
+                              type="button"
+                              className="shrink-0 text-rose-600"
+                              disabled={removeDayPlan.isPending}
+                              onClick={() => removeDayPlan.mutate(day.workDate)}
+                            >
+                              O‘chirish
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </section>
             ) : (
               <p className="rounded-xl border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">

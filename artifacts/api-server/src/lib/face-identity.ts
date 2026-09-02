@@ -22,9 +22,12 @@ export const FACE_DESCRIPTOR_LEN = 128;
  */
 export const FACE_MATCH_MAX = envNum("FACE_MATCH_THRESHOLD", 0.34);
 export const FACE_MATCH_MIN_COSINE = envNum("FACE_MATCH_MIN_COSINE", 0.942);
+/** Davomat: faqat profil egasi — login thresholddan qattiqroq. */
+export const FACE_OWNER_MATCH_MAX = envNum("FACE_OWNER_MATCH_THRESHOLD", 0.32);
+export const FACE_OWNER_MIN_COSINE = envNum("FACE_OWNER_MIN_COSINE", 0.945);
 export const FACE_AMBIGUOUS_MARGIN = envNum("FACE_AMBIGUOUS_MARGIN", 0.08);
 export const FACE_AMBIGUOUS_RATIO = envNum("FACE_AMBIGUOUS_RATIO", 0.72);
-export const FACE_ENROLL_BLOCK_MAX = envNum("FACE_ENROLLMENT_THRESHOLD", 0.36);
+export const FACE_ENROLL_BLOCK_MAX = envNum("FACE_ENROLLMENT_THRESHOLD", 0.22);
 export const FACE_SIMILAR_WARN = envNum("FACE_SIMILAR_WARN", 0.5);
 export const LIVENESS_THRESHOLD = envNum("LIVENESS_THRESHOLD", 0.55);
 export const FACE_CHALLENGE_TTL_MS = 120_000;
@@ -88,6 +91,71 @@ export function faceDistance(a: number[], b: number[]): { dist: number; cosine: 
 
 export function isSamePerson(dist: number, cosine: number, maxDist = FACE_MATCH_MAX): boolean {
   return dist <= maxDist && cosine >= FACE_MATCH_MIN_COSINE;
+}
+
+export function isOwnerFace(dist: number, cosine: number): boolean {
+  return dist <= FACE_OWNER_MATCH_MAX && cosine >= FACE_OWNER_MIN_COSINE;
+}
+
+export type OwnerProbeMatch = { dist: number; cosine: number; profileId: number };
+
+/**
+ * Har bir jonli kadr profil egasining barcha shablonlari bilan solishtiriladi.
+ * Barcha kadrlar thresholddan o‘tmasa — rad (boshqa odam yoki noaniq).
+ */
+export function matchProbesToOwner(
+  probes: number[][],
+  templates: StoredFace[],
+  maxDist = FACE_OWNER_MATCH_MAX,
+  minCosine = FACE_OWNER_MIN_COSINE,
+):
+  | {
+      ok: true;
+      profileId: number;
+      perProbe: OwnerProbeMatch[];
+      bestDist: number;
+      worstDist: number;
+      bestCosine: number;
+    }
+  | { ok: false; perProbe: OwnerProbeMatch[]; failedAt: number; dist: number; cosine: number } {
+  const valid = probes.filter((p) => p.length === FACE_DESCRIPTOR_LEN);
+  if (!valid.length || !templates.length) {
+    return { ok: false, perProbe: [], failedAt: -1, dist: 1, cosine: 0 };
+  }
+  const perProbe: OwnerProbeMatch[] = [];
+  for (const probe of valid) {
+    let best: OwnerProbeMatch | null = null;
+    for (const row of templates) {
+      const { dist, cosine } = faceDistance(probe, row.descriptor);
+      if (!best || dist < best.dist) {
+        best = { dist, cosine, profileId: row.id };
+      }
+    }
+    if (!best) {
+      return { ok: false, perProbe, failedAt: perProbe.length, dist: 1, cosine: 0 };
+    }
+    perProbe.push(best);
+    if (best.dist > maxDist || best.cosine < minCosine) {
+      return {
+        ok: false,
+        perProbe,
+        failedAt: perProbe.length - 1,
+        dist: best.dist,
+        cosine: best.cosine,
+      };
+    }
+  }
+  const worstDist = Math.max(...perProbe.map((p) => p.dist));
+  const bestDist = Math.min(...perProbe.map((p) => p.dist));
+  const bestCosine = Math.max(...perProbe.map((p) => p.cosine));
+  return {
+    ok: true,
+    profileId: perProbe[0]!.profileId,
+    perProbe,
+    bestDist,
+    worstDist,
+    bestCosine,
+  };
 }
 
 export function isEnrollConflict(dist: number, cosine = 1): boolean {

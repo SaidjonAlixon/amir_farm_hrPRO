@@ -3,12 +3,15 @@ import { describe, it } from "node:test";
 import {
   FACE_ENROLL_BLOCK_MAX,
   FACE_MATCH_MAX,
+  FACE_OWNER_MATCH_MAX,
+  FACE_OWNER_MIN_COSINE,
+  matchProbesToOwner,
+  isSamePerson,
   evaluateLiveness,
   faceDistance,
   findEnrollConflicts,
   issueFaceChallenge,
   isEnrollConflict,
-  isSamePerson,
   parseFaceDescriptor,
   pickAuthMatch,
   listAuthCandidates,
@@ -185,6 +188,24 @@ describe("face identity", () => {
 
   it("calibrated thresholds stay in face-api range", () => {
     assert.ok(FACE_MATCH_MAX <= 0.4);
-    assert.ok(FACE_ENROLL_BLOCK_MAX > FACE_MATCH_MAX);
+    // Enroll duplicate block qattiqroq — yaqin yuzlar ikki akkauntga yozilmasin
+    assert.ok(FACE_ENROLL_BLOCK_MAX < FACE_MATCH_MAX);
+    assert.ok(FACE_ENROLL_BLOCK_MAX >= 0.15 && FACE_ENROLL_BLOCK_MAX <= 0.3);
+    // Davomat owner — login thresholddan qattiq
+    assert.ok(FACE_OWNER_MATCH_MAX <= FACE_MATCH_MAX);
+  });
+
+  it("owner match requires every probe against enrolled templates (PASS/FAIL)", () => {
+    const owner = embedding(5);
+    const templates: StoredFace[] = [
+      { id: 1, userId: 10, descriptor: owner },
+      { id: 1, userId: 10, descriptor: noise(owner, 0.05) },
+    ];
+    const probeOk = noise(owner, 0.03);
+    const probeBad = embedding(88);
+    const pass = matchProbesToOwner([probeOk, noise(probeOk, 0.02)], templates);
+    assert.equal(pass.ok, true);
+    const fail = matchProbesToOwner([probeOk, probeBad], templates);
+    assert.equal(fail.ok, false);
   });
 });

@@ -965,10 +965,11 @@ INSERT INTO shift_templates (key, label, hint, start_hm, end_hm, overnight, skip
 VALUES
   ('one', '1-smena', 'Kunduzgi smena', '08:00', '17:00', FALSE, FALSE, '07:45', '1-smenaga tezroq harakat qiling.', 0),
   ('two', '2-smena', 'Kechki smena', '18:00', '23:45', FALSE, FALSE, '17:45', '2-smenaga tezroq harakat qiling.', 1),
-  ('remote', 'Masofadan', 'Masofadan ishlaydiganlar', '09:00', '18:00', FALSE, TRUE, '08:45', 'Masofadan ish: GPS majburiy emas.', 2),
-  ('flexible', 'Erkin grafik', 'Erkin ish grafigi', '09:00', '21:00', FALSE, TRUE, '08:45', 'Erkin grafik: moslashuvchan vaqt.', 3),
-  ('alternate', 'Kun ora', 'Kun ora ishlaydigan xodimlar', '08:00', '17:00', FALSE, FALSE, '07:45', 'Kun ora smena.', 4),
-  ('alternate_night', 'Kun ora (kechki)', 'Kechki 17:00–08:00', '17:00', '08:00', TRUE, FALSE, '16:45', 'Kun ora kechki smena.', 5)
+  ('three', '3-smena', 'Qo''shimcha / maxsus vaqtli smena', '14:00', '22:00', FALSE, FALSE, '13:45', '3-smenaga tezroq harakat qiling.', 2),
+  ('remote', 'Masofadan', 'Masofadan ishlaydiganlar', '09:00', '18:00', FALSE, TRUE, '08:45', 'Masofadan ish: GPS majburiy emas.', 3),
+  ('flexible', 'Erkin grafik', 'Erkin ish grafigi', '09:00', '21:00', FALSE, TRUE, '08:45', 'Erkin grafik: moslashuvchan vaqt.', 4),
+  ('alternate', 'Kun ora', 'Kun ora ishlaydigan xodimlar', '08:00', '17:00', FALSE, FALSE, '07:45', 'Kun ora smena.', 5),
+  ('alternate_night', 'Kun ora (kechki)', 'Kechki 17:00–08:00', '17:00', '08:00', TRUE, FALSE, '16:45', 'Kun ora kechki smena.', 6)
 ON CONFLICT (key) DO NOTHING;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS shift_start TEXT;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS shift_end TEXT;
@@ -989,6 +990,36 @@ CREATE INDEX IF NOT EXISTS emp_branch_day_overrides_date_idx
   ON employee_branch_day_overrides (work_date);
 CREATE INDEX IF NOT EXISTS emp_branch_day_overrides_branch_idx
   ON employee_branch_day_overrides (branch_id);
+
+CREATE TABLE IF NOT EXISTS employee_day_shift_plans (
+  id SERIAL PRIMARY KEY,
+  employee_id INTEGER NOT NULL,
+  work_date TEXT NOT NULL,
+  segment_order INTEGER NOT NULL DEFAULT 0,
+  shift_type TEXT NOT NULL,
+  shift_start TEXT,
+  shift_end TEXT,
+  branch_id INTEGER,
+  note TEXT,
+  created_by_id INTEGER,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS emp_day_shift_plans_emp_date_seg_uidx
+  ON employee_day_shift_plans (employee_id, work_date, segment_order);
+CREATE INDEX IF NOT EXISTS emp_day_shift_plans_date_idx
+  ON employee_day_shift_plans (work_date);
+CREATE INDEX IF NOT EXISTS emp_day_shift_plans_employee_idx
+  ON employee_day_shift_plans (employee_id);
+
+ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS segment_order INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS shift_type TEXT;
+ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS shift_start TEXT;
+ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS shift_end TEXT;
+ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS branch_id INTEGER;
+DROP INDEX IF EXISTS attendance_records_emp_date_uidx;
+CREATE UNIQUE INDEX IF NOT EXISTS attendance_records_emp_date_seg_uidx
+  ON attendance_records (employee_id, work_date, segment_order);
     `);
   } catch (err) {
     logger.error({ err }, "Failed to ensure DB schema");

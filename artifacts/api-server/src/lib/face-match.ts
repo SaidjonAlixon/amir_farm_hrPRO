@@ -7,11 +7,14 @@ import {
   FACE_ENROLL_BLOCK_MAX,
   FACE_MATCH_MAX,
   FACE_MATCH_MIN_COSINE,
+  FACE_OWNER_MATCH_MAX,
+  FACE_OWNER_MIN_COSINE,
   FACE_SIMILAR_WARN,
   LIVENESS_THRESHOLD,
   evaluateLiveness,
   faceDistance,
   findEnrollConflicts,
+  matchProbesToOwner,
   parseFaceDescriptor,
   pickAuthMatch,
   listAuthCandidates,
@@ -319,7 +322,7 @@ export async function matchFaceForAuthWithAi(
 
 /**
  * Davomat: jonli yuzni FAQAT shu akkauntga biriktirilgan Face ID bilan solishtirish.
- * Global “eng yaqin odam” qidiruvi yo‘q — boshqa xodim yuzi bilan o‘tish mumkin emas.
+ * Har bir kadr alohida tekshiriladi — barchasi profil egasiga mos bo‘lishi shart.
  */
 export async function matchFaceForUserWithAi(
   userId: number,
@@ -343,23 +346,6 @@ export async function matchFaceForUserWithAi(
     };
   }
 
-  const identity = identityProbes(probes);
-  let best: { id: number; dist: number; cosine: number } | null = null;
-  for (const row of mine) {
-    for (const probe of identity) {
-      const { dist, cosine } = faceDistance(probe, row.descriptor);
-      if (!best || dist < best.dist) best = { id: row.id, dist, cosine };
-    }
-  }
-  if (!best) {
-    return {
-      ok: false,
-      error: "Bu akkauntda Face ID yo‘q. Avval yuzni to‘liq ro‘yxatdan o‘tkazing.",
-      code: "face_not_registered",
-      fullName,
-    };
-  }
-
   const notOwner = (detail?: string) => ({
     ok: false as const,
     error:
@@ -371,13 +357,50 @@ export async function matchFaceForUserWithAi(
     fullName,
   });
 
-  const { isFaceAiEnabled, verifyFaceWithAi } = await import("./face-ai-verify");
+  const matched = matchProbesToOwner(probes, mine, FACE_OWNER_MATCH_MAX, FACE_OWNER_MIN_COSINE);
+  if (!matched.ok) {
+    logger.info(
+      {
+        event: "face_verify_account",
+        ok: false,
+        userId,
+        code: "face_not_account_owner",
+        failedProbe: matched.failedAt,
+        dist: Number(matched.dist.toFixed(4)),
+        cosine: Number(matched.cosine.toFixed(4)),
+        probes: probes.length,
+      },
+      "face account owner mismatch (local)",
+    );
+    return notOwner();
+  }
+
+  const best = {
+    id: matched.profileId,
+    dist: matched.worstDist,
+    cosine: matched.bestCosine,
+  };
+
+  const { isFaceAiEnabled, verifyFaceWithAi, inspectLiveAntiSpoof } = await import("./face-ai-verify");
   if (isFaceAiEnabled()) {
+    /** Chegaradagi match — ekran/foto oldini olish (1 ta arzon AI). */
+    if (matched.worstDist > 0.24) {
+      const spoof = await inspectLiveAntiSpoof(liveSnapshot);
+      if (!spoof.ok) {
+        return {
+          ok: false,
+          error: spoof.error,
+          code: spoof.code,
+          fullName,
+        };
+      }
+    }
+    /** Profil egasi 1:1 — AI har doim tasdiqlaydi (skip yo‘q). */
     const ai = await verifyFaceWithAi({
       faceProfileId: best.id,
       liveSnapshot,
-      localDist: best.dist,
-      localCosine: best.cosine,
+      localDist: matched.worstDist,
+      localCosine: matched.bestCosine,
     });
     if (!ai.ok) {
       if (ai.code === "face_ai_uncertain" || ai.code === "face_ai_low_confidence") {
@@ -388,14 +411,6 @@ export async function matchFaceForUserWithAi(
           fullName,
         };
       }
-      return notOwner(
-        fullName
-          ? `${fullName} — siz emassiz. Bu akkaunt egasining yuzi bilan mos kelmadi.`
-          : undefined,
-      );
-    }
-    /** AI “same” desagina o‘tadi — lokal ham juda uzoq bo‘lsa (boshqa odam) rad. */
-    if (best.dist > FACE_MATCH_MAX + 0.12) {
       return notOwner();
     }
     logger.info(
@@ -403,29 +418,41 @@ export async function matchFaceForUserWithAi(
         event: "face_verify_account",
         ok: true,
         userId,
-        dist: Number(best.dist.toFixed(4)),
-        cosine: Number(best.cosine.toFixed(4)),
+        dist: Number(matched.worstDist.toFixed(4)),
+        cosine: Number(matched.bestCosine.toFixed(4)),
+        probes: probes.length,
+        ai: true,
       },
       "face account match ok",
     );
-    return { ok: true, id: best.id, userId, dist: best.dist, cosine: best.cosine };
+    return {
+      ok: true,
+      id: best.id,
+      userId,
+      dist: matched.worstDist,
+      cosine: matched.bestCosine,
+    };
   }
 
-  if (!isSamePerson(best.dist, best.cosine, FACE_MATCH_MAX)) {
-    return notOwner();
-  }
   logger.info(
     {
       event: "face_verify_account",
       ok: true,
       userId,
-      dist: Number(best.dist.toFixed(4)),
-      cosine: Number(best.cosine.toFixed(4)),
+      dist: Number(matched.worstDist.toFixed(4)),
+      cosine: Number(matched.bestCosine.toFixed(4)),
+      probes: probes.length,
       ai: false,
     },
     "face account match ok (local)",
   );
-  return { ok: true, id: best.id, userId, dist: best.dist, cosine: best.cosine };
+  return {
+    ok: true,
+    id: best.id,
+    userId,
+    dist: matched.worstDist,
+    cosine: matched.bestCosine,
+  };
 }
 
 export function parseStoredVectors(raw: string): number[][] {
